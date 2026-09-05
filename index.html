@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Productivity Tracker</title>
+<style>
+  body {
+    font-family: Arial, Helvetica, sans-serif;
+    max-width: 600px;
+    margin: 40px auto;
+    padding: 0 20px;
+    color: #222;
+    background: #fafafa;
+  }
+
+  h1 {
+    font-size: 22px;
+    margin-bottom: 20px;
+  }
+
+  .tracker {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 20px;
+  }
+
+  #taskInput {
+    flex: 1;
+    padding: 8px;
+    font-size: 14px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+  }
+
+  button {
+    padding: 8px 16px;
+    font-size: 14px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+  }
+
+  #startBtn {
+    background: #2e7d32;
+    color: white;
+  }
+
+  #stopBtn {
+    background: #c62828;
+    color: white;
+  }
+
+  button:disabled {
+    background: #ccc;
+    cursor: not-allowed;
+  }
+
+  #status {
+    margin-bottom: 30px;
+    font-size: 14px;
+    color: #555;
+  }
+
+  #elapsed {
+    font-family: 'Courier New', monospace;
+    font-weight: bold;
+    color: #2e7d32;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+  }
+
+  th, td {
+    text-align: left;
+    padding: 8px;
+    border-bottom: 1px solid #ddd;
+  }
+
+  th {
+    background: #eee;
+  }
+
+  #emptyMsg {
+    color: #888;
+    font-size: 14px;
+  }
+</style>
+</head>
+<body>
+
+<h1>Productivity Tracker</h1>
+
+<div class="tracker">
+  <input type="text" id="taskInput" placeholder="What are you working on?">
+  <button id="startBtn">Start</button>
+  <button id="stopBtn" disabled>Stop</button>
+</div>
+
+<div id="status"></div>
+
+<h2>Today's Sessions</h2>
+<p id="emptyMsg">No sessions completed yet.</p>
+<table id="sessionsTable" style="display: none;">
+  <thead>
+    <tr>
+      <th>Task</th>
+      <th>Start</th>
+      <th>End</th>
+      <th>Duration</th>
+    </tr>
+  </thead>
+  <tbody id="sessionsBody"></tbody>
+</table>
+
+<script>
+  // Everything lives in memory only — refreshing the page clears it.
+  let currentSession = null; // { task, startTime }
+  let timerInterval = null;
+  const sessions = [];
+
+  const taskInput = document.getElementById('taskInput');
+  const startBtn = document.getElementById('startBtn');
+  const stopBtn = document.getElementById('stopBtn');
+  const statusEl = document.getElementById('status');
+  const sessionsBody = document.getElementById('sessionsBody');
+  const sessionsTable = document.getElementById('sessionsTable');
+  const emptyMsg = document.getElementById('emptyMsg');
+
+  function formatTime(date) {
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  }
+
+  function pad(n) {
+    return String(n).padStart(2, '0');
+  }
+
+  // Fixed-width HH:MM:SS, used for the live-updating timer while a session is running.
+  function formatElapsed(ms) {
+    const totalSeconds = Math.floor(ms / 1000);
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+    return `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
+  }
+
+  function formatDuration(ms) {
+    const totalSeconds = Math.floor(ms / 1000);
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+    const parts = [];
+    if (hours > 0) parts.push(hours + 'h');
+    if (minutes > 0) parts.push(minutes + 'm');
+    parts.push(seconds + 's');
+    return parts.join(' ');
+  }
+
+  startBtn.addEventListener('click', () => {
+    const task = taskInput.value.trim();
+    if (!task) {
+      alert('Please enter what you\'re working on first.');
+      return;
+    }
+
+    currentSession = {
+      task: task,
+      startTime: new Date()
+    };
+
+    statusEl.innerHTML = `Working on "${task}" — started at ${formatTime(currentSession.startTime)} &nbsp; <span id="elapsed">00:00:00</span>`;
+
+    taskInput.disabled = true;
+    startBtn.disabled = true;
+    stopBtn.disabled = false;
+
+    // Update the elapsed-time display every second while this session runs.
+    timerInterval = setInterval(() => {
+      const elapsedEl = document.getElementById('elapsed');
+      if (elapsedEl && currentSession) {
+        elapsedEl.textContent = formatElapsed(new Date() - currentSession.startTime);
+      }
+    }, 1000);
+  });
+
+  stopBtn.addEventListener('click', () => {
+    if (!currentSession) return;
+
+    clearInterval(timerInterval);
+    timerInterval = null;
+
+    const endTime = new Date();
+    const durationMs = endTime - currentSession.startTime;
+
+    sessions.push({
+      task: currentSession.task,
+      startTime: currentSession.startTime,
+      endTime: endTime,
+      durationMs: durationMs
+    });
+
+    renderSessions();
+
+    currentSession = null;
+    statusEl.textContent = '';
+    taskInput.value = '';
+    taskInput.disabled = false;
+    startBtn.disabled = false;
+    stopBtn.disabled = true;
+  });
+
+  function renderSessions() {
+    if (sessions.length === 0) {
+      emptyMsg.style.display = 'block';
+      sessionsTable.style.display = 'none';
+      return;
+    }
+
+    emptyMsg.style.display = 'none';
+    sessionsTable.style.display = 'table';
+
+    // Show most recent session first
+    sessionsBody.innerHTML = '';
+    for (let i = sessions.length - 1; i >= 0; i--) {
+      const s = sessions[i];
+      const row = document.createElement('tr');
+      row.innerHTML = `
+        <td>${s.task}</td>
+        <td>${formatTime(s.startTime)}</td>
+        <td>${formatTime(s.endTime)}</td>
+        <td>${formatDuration(s.durationMs)}</td>
+      `;
+      sessionsBody.appendChild(row);
+    }
+  }
+</script>
+
+</body>
+</html>
