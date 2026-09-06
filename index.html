@@ -5,67 +5,159 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Productivity Tracker</title>
 <style>
+  :root {
+    --bg: #f4f5f7;
+    --card: #ffffff;
+    --border: #e3e5e9;
+    --text: #1f2328;
+    --muted: #6b7280;
+    --accent: #3563e9;
+    --accent-dark: #2748b3;
+    --green: #1f9d55;
+    --red: #d64545;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
   body {
-    font-family: Arial, Helvetica, sans-serif;
-    max-width: 600px;
-    margin: 40px auto;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    max-width: 640px;
+    margin: 56px auto;
     padding: 0 20px;
-    color: #222;
-    background: #fafafa;
+    color: var(--text);
+    background: var(--bg);
+    line-height: 1.5;
   }
 
   h1 {
-    font-size: 22px;
-    margin-bottom: 20px;
+    font-size: 24px;
+    font-weight: 700;
+    margin: 0 0 4px;
+    letter-spacing: -0.02em;
+  }
+
+  .subtitle {
+    color: var(--muted);
+    font-size: 14px;
+    margin: 0 0 28px;
+  }
+
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
+  }
+
+  .card + .card {
+    margin-top: 24px;
   }
 
   .tracker {
     display: flex;
     gap: 10px;
-    margin-bottom: 20px;
+    flex-wrap: wrap;
   }
 
   #taskInput {
     flex: 1;
-    padding: 8px;
+    min-width: 160px;
+    padding: 10px 12px;
     font-size: 14px;
-    border: 1px solid #ccc;
-    border-radius: 4px;
+    font-family: inherit;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: #fbfbfc;
+    transition: border-color 0.15s ease;
+  }
+
+  #taskInput:focus {
+    outline: none;
+    border-color: var(--accent);
+    background: white;
+  }
+
+  #categorySelect {
+    padding: 10px 12px;
+    font-size: 14px;
+    font-family: inherit;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: #fbfbfc;
+    color: var(--text);
   }
 
   button {
-    padding: 8px 16px;
+    padding: 10px 20px;
     font-size: 14px;
+    font-weight: 600;
+    font-family: inherit;
     border: none;
-    border-radius: 4px;
+    border-radius: 8px;
     cursor: pointer;
+    transition: opacity 0.15s ease, transform 0.05s ease;
+  }
+
+  button:active:not(:disabled) {
+    transform: scale(0.98);
+  }
+
+  button:hover:not(:disabled) {
+    opacity: 0.9;
   }
 
   #startBtn {
-    background: #2e7d32;
+    background: var(--green);
     color: white;
   }
 
   #stopBtn {
-    background: #c62828;
+    background: var(--red);
     color: white;
   }
 
   button:disabled {
-    background: #ccc;
+    background: #e5e7eb;
+    color: #9ca3af;
     cursor: not-allowed;
   }
 
   #status {
-    margin-bottom: 30px;
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
     font-size: 14px;
-    color: #555;
+    color: var(--muted);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  #status:empty {
+    display: none;
   }
 
   #elapsed {
-    font-family: 'Courier New', monospace;
-    font-weight: bold;
-    color: #2e7d32;
+    font-family: 'SF Mono', 'Courier New', monospace;
+    font-weight: 700;
+    font-size: 15px;
+    color: var(--green);
+    background: #eafaf0;
+    padding: 3px 8px;
+    border-radius: 6px;
+  }
+
+  h2 {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin: 0 0 14px;
   }
 
   table {
@@ -76,53 +168,96 @@
 
   th, td {
     text-align: left;
-    padding: 8px;
-    border-bottom: 1px solid #ddd;
+    padding: 10px 8px;
   }
 
-  th {
-    background: #eee;
+  thead th {
+    color: var(--muted);
+    font-weight: 600;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    border-bottom: 1px solid var(--border);
   }
+
+  tbody tr {
+    border-bottom: 1px solid #f0f1f3;
+  }
+
+  tbody tr:last-child {
+    border-bottom: none;
+  }
+
+  tbody tr:hover {
+    background: #fafbfc;
+  }
+
+  .badge {
+    display: inline-block;
+    padding: 2px 9px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+  }
+
+  .badge-work { background: #e6edff; color: var(--accent-dark); }
+  .badge-study { background: #fef3d6; color: #9a6b00; }
+  .badge-break { background: #e3f6e9; color: #1f7a45; }
+  .badge-other { background: #ececee; color: #52525b; }
 
   #emptyMsg {
-    color: #888;
+    color: var(--muted);
     font-size: 14px;
+    margin: 0;
   }
 </style>
 </head>
 <body>
 
 <h1>Productivity Tracker</h1>
+<p class="subtitle">Track what you're working on, one session at a time.</p>
 
-<div class="tracker">
-  <input type="text" id="taskInput" placeholder="What are you working on?">
-  <button id="startBtn">Start</button>
-  <button id="stopBtn" disabled>Stop</button>
+<div class="card">
+  <div class="tracker">
+    <input type="text" id="taskInput" placeholder="What are you working on?">
+    <select id="categorySelect">
+      <option value="Work">Work</option>
+      <option value="Study">Study</option>
+      <option value="Break">Break</option>
+      <option value="Other">Other</option>
+    </select>
+    <button id="startBtn">Start</button>
+    <button id="stopBtn" disabled>Stop</button>
+  </div>
+
+  <div id="status"></div>
 </div>
 
-<div id="status"></div>
-
-<h2>Today's Sessions</h2>
-<p id="emptyMsg">No sessions completed yet.</p>
-<table id="sessionsTable" style="display: none;">
-  <thead>
-    <tr>
-      <th>Task</th>
-      <th>Start</th>
-      <th>End</th>
-      <th>Duration</th>
-    </tr>
-  </thead>
-  <tbody id="sessionsBody"></tbody>
-</table>
+<div class="card">
+  <h2>Today's Sessions</h2>
+  <p id="emptyMsg">No sessions completed yet.</p>
+  <table id="sessionsTable" style="display: none;">
+    <thead>
+      <tr>
+        <th>Task</th>
+        <th>Category</th>
+        <th>Start</th>
+        <th>End</th>
+        <th>Duration</th>
+      </tr>
+    </thead>
+    <tbody id="sessionsBody"></tbody>
+  </table>
+</div>
 
 <script>
   // Everything lives in memory only — refreshing the page clears it.
-  let currentSession = null; // { task, startTime }
+  let currentSession = null; // { task, category, startTime }
   let timerInterval = null;
   const sessions = [];
 
   const taskInput = document.getElementById('taskInput');
+  const categorySelect = document.getElementById('categorySelect');
   const startBtn = document.getElementById('startBtn');
   const stopBtn = document.getElementById('stopBtn');
   const statusEl = document.getElementById('status');
@@ -147,6 +282,10 @@
     return `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
   }
 
+  function categoryBadge(category) {
+    return `<span class="badge badge-${category.toLowerCase()}">${category}</span>`;
+  }
+
   function formatDuration(ms) {
     const totalSeconds = Math.floor(ms / 1000);
     const hours = Math.floor(totalSeconds / 3600);
@@ -168,12 +307,14 @@
 
     currentSession = {
       task: task,
+      category: categorySelect.value,
       startTime: new Date()
     };
 
-    statusEl.innerHTML = `Working on "${task}" — started at ${formatTime(currentSession.startTime)} &nbsp; <span id="elapsed">00:00:00</span>`;
+    statusEl.innerHTML = `Working on "${task}" [${currentSession.category}] — started at ${formatTime(currentSession.startTime)} &nbsp; <span id="elapsed">00:00:00</span>`;
 
     taskInput.disabled = true;
+    categorySelect.disabled = true;
     startBtn.disabled = true;
     stopBtn.disabled = false;
 
@@ -197,6 +338,7 @@
 
     sessions.push({
       task: currentSession.task,
+      category: currentSession.category,
       startTime: currentSession.startTime,
       endTime: endTime,
       durationMs: durationMs
@@ -208,6 +350,7 @@
     statusEl.textContent = '';
     taskInput.value = '';
     taskInput.disabled = false;
+    categorySelect.disabled = false;
     startBtn.disabled = false;
     stopBtn.disabled = true;
   });
@@ -229,6 +372,7 @@
       const row = document.createElement('tr');
       row.innerHTML = `
         <td>${s.task}</td>
+        <td>${categoryBadge(s.category)}</td>
         <td>${formatTime(s.startTime)}</td>
         <td>${formatTime(s.endTime)}</td>
         <td>${formatDuration(s.durationMs)}</td>
