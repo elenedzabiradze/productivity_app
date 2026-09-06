@@ -1,0 +1,5 @@
+# Local session data — changes with every use, not source code.
+sessions.json
+
+# Node
+node_modules/
