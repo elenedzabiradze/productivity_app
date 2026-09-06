@@ -1,0 +1,9 @@
+{
+  "name": "focus-session-tracker",
+  "version": "0.2.0",
+  "description": "A local focus-session tracker with JSON file persistence.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  }
+}

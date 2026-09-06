@@ -1,0 +1,26 @@
+[
+  {
+    "task": "Read docs",
+    "category": "Study",
+    "startTime": "2026-09-06T11:53:52.000Z",
+    "endTime": "2026-09-06T11:53:52.000Z",
+    "durationMs": 600000,
+    "id": "1788695632957"
+  },
+  {
+    "task": "Coding",
+    "category": "Work",
+    "startTime": "2026-09-06T11:53:52.000Z",
+    "endTime": "2026-09-06T11:53:52.000Z",
+    "durationMs": 1200000,
+    "id": "1788695632968"
+  },
+  {
+    "task": "work",
+    "category": "Work",
+    "startTime": "2026-09-06T11:57:41.246Z",
+    "endTime": "2026-09-06T11:57:44.177Z",
+    "durationMs": 2931,
+    "id": "1788695864501"
+  }
+]

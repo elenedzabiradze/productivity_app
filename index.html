@@ -205,6 +205,52 @@
   .badge-break { background: #e3f6e9; color: #1f7a45; }
   .badge-other { background: #ececee; color: #52525b; }
 
+  .totals-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 14px;
+  }
+
+  .totals-header h2 {
+    margin: 0;
+  }
+
+  #rangeSelect {
+    padding: 6px 10px;
+    font-size: 13px;
+    font-family: inherit;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: #fbfbfc;
+    color: var(--text);
+  }
+
+  .totals-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 0;
+    border-bottom: 1px solid #f0f1f3;
+  }
+
+  .totals-row:last-child {
+    border-bottom: none;
+  }
+
+  .totals-row.totals-total {
+    border-top: 1px solid var(--border);
+    margin-top: 4px;
+    padding-top: 12px;
+    font-weight: 700;
+  }
+
+  .totals-duration {
+    font-family: 'SF Mono', 'Courier New', monospace;
+    font-size: 13px;
+    color: var(--text);
+  }
+
   #emptyMsg {
     color: var(--muted);
     font-size: 14px;
@@ -234,13 +280,27 @@
 </div>
 
 <div class="card">
-  <h2>Today's Sessions</h2>
-  <p id="emptyMsg">No sessions completed yet.</p>
+  <div class="totals-header">
+    <h2>Totals by Category</h2>
+    <select id="rangeSelect">
+      <option value="today">Today</option>
+      <option value="week">This Week</option>
+      <option value="month">This Month</option>
+      <option value="all">All Time</option>
+    </select>
+  </div>
+  <div id="totalsList"></div>
+</div>
+
+<div class="card">
+  <h2>Session History</h2>
+  <p id="emptyMsg">No sessions recorded yet.</p>
   <table id="sessionsTable" style="display: none;">
     <thead>
       <tr>
         <th>Task</th>
         <th>Category</th>
+        <th>Date</th>
         <th>Start</th>
         <th>End</th>
         <th>Duration</th>
@@ -251,10 +311,11 @@
 </div>
 
 <script>
-  // Everything lives in memory only — refreshing the page clears it.
+  // Sessions are persisted on disk by the local server (see server.js),
+  // loaded into this array when the page opens.
   let currentSession = null; // { task, category, startTime }
   let timerInterval = null;
-  const sessions = [];
+  let sessions = [];
 
   const taskInput = document.getElementById('taskInput');
   const categorySelect = document.getElementById('categorySelect');
@@ -264,9 +325,17 @@
   const sessionsBody = document.getElementById('sessionsBody');
   const sessionsTable = document.getElementById('sessionsTable');
   const emptyMsg = document.getElementById('emptyMsg');
+  const rangeSelect = document.getElementById('rangeSelect');
+  const totalsList = document.getElementById('totalsList');
+
+  const CATEGORIES = ['Work', 'Study', 'Break', 'Other'];
 
   function formatTime(date) {
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  }
+
+  function formatDate(date) {
+    return date.toLocaleDateString([], { year: 'numeric', month: 'short', day: 'numeric' });
   }
 
   function pad(n) {
@@ -298,6 +367,85 @@
     return parts.join(' ');
   }
 
+  // --- Date-range helpers for the totals-by-category card ---
+
+  function startOfToday() {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    return d;
+  }
+
+  function startOfWeek() {
+    // Treats Monday as the first day of the week.
+    const d = startOfToday();
+    const day = d.getDay(); // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
+    const diffToMonday = (day === 0) ? 6 : day - 1;
+    d.setDate(d.getDate() - diffToMonday);
+    return d;
+  }
+
+  function startOfMonth() {
+    const d = startOfToday();
+    d.setDate(1);
+    return d;
+  }
+
+  function rangeStartFor(rangeValue) {
+    if (rangeValue === 'today') return startOfToday();
+    if (rangeValue === 'week') return startOfWeek();
+    if (rangeValue === 'month') return startOfMonth();
+    return null; // 'all' — no lower bound
+  }
+
+  // Recomputes and redraws the per-category totals for whatever range
+  // is currently selected in the dropdown.
+  function renderTotals() {
+    const rangeStart = rangeStartFor(rangeSelect.value);
+
+    const totals = {};
+    CATEGORIES.forEach(c => { totals[c] = 0; });
+
+    let grandTotal = 0;
+    sessions.forEach(s => {
+      if (!rangeStart || s.startTime >= rangeStart) {
+        totals[s.category] = (totals[s.category] || 0) + s.durationMs;
+        grandTotal += s.durationMs;
+      }
+    });
+
+    totalsList.innerHTML = CATEGORIES.map(c => `
+      <div class="totals-row">
+        ${categoryBadge(c)}
+        <span class="totals-duration">${formatDuration(totals[c])}</span>
+      </div>
+    `).join('') + `
+      <div class="totals-row totals-total">
+        <span>Total</span>
+        <span class="totals-duration">${formatDuration(grandTotal)}</span>
+      </div>
+    `;
+  }
+
+  rangeSelect.addEventListener('change', renderTotals);
+
+  // Load previously saved sessions from the server when the page opens.
+  async function loadSessions() {
+    try {
+      const res = await fetch('/api/sessions');
+      const data = await res.json();
+      // Dates travel as plain strings over JSON — turn them back into Date objects.
+      sessions = data.map(s => ({
+        ...s,
+        startTime: new Date(s.startTime),
+        endTime: new Date(s.endTime)
+      }));
+      renderSessions();
+    } catch (err) {
+      console.error('Could not load sessions from the server:', err);
+      statusEl.textContent = 'Could not connect to the server — make sure it is running (node server.js).';
+    }
+  }
+
   startBtn.addEventListener('click', () => {
     const task = taskInput.value.trim();
     if (!task) {
@@ -327,7 +475,7 @@
     }, 1000);
   });
 
-  stopBtn.addEventListener('click', () => {
+  stopBtn.addEventListener('click', async () => {
     if (!currentSession) return;
 
     clearInterval(timerInterval);
@@ -336,13 +484,34 @@
     const endTime = new Date();
     const durationMs = endTime - currentSession.startTime;
 
-    sessions.push({
+    const newSession = {
       task: currentSession.task,
       category: currentSession.category,
       startTime: currentSession.startTime,
       endTime: endTime,
       durationMs: durationMs
-    });
+    };
+
+    // Save it to sessions.json via the server, so it's still there next time
+    // the app is opened.
+    try {
+      const res = await fetch('/api/sessions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newSession)
+      });
+      const saved = await res.json();
+      sessions.push({
+        ...saved,
+        startTime: new Date(saved.startTime),
+        endTime: new Date(saved.endTime)
+      });
+    } catch (err) {
+      console.error('Could not save session to the server:', err);
+      alert('Could not save this session — the server might not be running. ' +
+            'It will show up for now, but will be lost on refresh.');
+      sessions.push(newSession);
+    }
 
     renderSessions();
 
@@ -356,6 +525,8 @@
   });
 
   function renderSessions() {
+    renderTotals();
+
     if (sessions.length === 0) {
       emptyMsg.style.display = 'block';
       sessionsTable.style.display = 'none';
@@ -373,6 +544,7 @@
       row.innerHTML = `
         <td>${s.task}</td>
         <td>${categoryBadge(s.category)}</td>
+        <td>${formatDate(s.startTime)}</td>
         <td>${formatTime(s.startTime)}</td>
         <td>${formatTime(s.endTime)}</td>
         <td>${formatDuration(s.durationMs)}</td>
@@ -380,6 +552,8 @@
       sessionsBody.appendChild(row);
     }
   }
+
+  loadSessions();
 </script>
 
 </body>
