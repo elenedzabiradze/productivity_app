@@ -10,7 +10,8 @@
 //   5. Remembers a running timer in active.json (/api/active), so it can
 //      resume after the app is closed and reopened.
 //   6. Every 5 seconds, notes which app is in front (/api/activity/current)
-//      and adds it to the activity log, activity.jsonl.
+//      and adds it to the activity log, activity.jsonl. /api/activity/today
+//      turns the log into today's time per app.
 //
 // No external packages needed — just Node's built-in tools.
 //
@@ -313,6 +314,75 @@ function appendActivity(filePath, reading) {
   }
 }
 
+// --- Turning the activity log into time per app (used by /api/activity/today) ---
+
+// This app's own name as macOS reports it. Its readings stay in the log but
+// are left out of the per-app totals.
+const OWN_APP_NAME = 'Productivity Tracker';
+// A reading counts as the time until the next one, but at most this long —
+// so gaps (app closed, Mac asleep) don't count as time.
+const MAX_READING_MS = 2 * ACTIVITY_INTERVAL_MS; // 10 seconds
+// The very last reading has no "next", so it counts as one interval.
+const LAST_READING_MS = ACTIVITY_INTERVAL_MS;    // 5 seconds
+
+// Turns the text of activity.jsonl into a list of { t: Date, app } readings.
+// Broken lines, lines without an app name, and bad timestamps are skipped.
+function parseActivityLog(text) {
+  const readings = [];
+  for (const line of String(text || '').split('\n')) {
+    if (!line.trim()) continue;
+    let data;
+    try {
+      data = JSON.parse(line);
+    } catch (err) {
+      continue; // e.g. a half-written line
+    }
+    if (!data || typeof data.app !== 'string' || !data.app.trim()) continue;
+    const t = new Date(data.t);
+    if (Number.isNaN(t.getTime())) continue;
+    readings.push({ ...data, t, app: data.app });
+  }
+  return readings;
+}
+
+// Works out how long each app was in front, for readings in [from, to).
+// `from` / `to` are Dates, or null for no limit.
+// Returns { apps: [{ app, ms }] sorted largest first, totalMs }.
+function timePerApp(readings, from, to) {
+  // Only readings inside the range, oldest first.
+  const inRange = readings
+    .filter(r => (!from || r.t >= from) && (!to || r.t < to))
+    .sort((a, b) => a.t - b.t);
+
+  const msByApp = {};
+  inRange.forEach((reading, i) => {
+    const next = inRange[i + 1];
+    // Time until the next reading, capped; the last reading gets one interval.
+    // (Math.max guards against clock changes making the gap negative.)
+    const ms = next
+      ? Math.min(Math.max(next.t - reading.t, 0), MAX_READING_MS)
+      : LAST_READING_MS;
+    if (reading.app === OWN_APP_NAME) return; // don't count this app itself
+    msByApp[reading.app] = (msByApp[reading.app] || 0) + ms;
+  });
+
+  const apps = Object.entries(msByApp)
+    .map(([app, ms]) => ({ app, ms }))
+    // Largest first; equal times in alphabetical order so the result is stable.
+    .sort((a, b) => b.ms - a.ms || a.app.localeCompare(b.app));
+  const totalMs = apps.reduce((sum, a) => sum + a.ms, 0);
+  return { apps, totalMs };
+}
+
+// Reads the whole activity log from disk (empty list if there isn't one yet).
+function readActivityLog() {
+  try {
+    return parseActivityLog(fs.readFileSync(ACTIVITY_FILE, 'utf8'));
+  } catch (err) {
+    return []; // no log yet, or unreadable
+  }
+}
+
 // The most recent successful reading: { t: ISO time, app: name }, or null.
 let latestActivity = null;
 let readingInProgress = false;
@@ -380,6 +450,13 @@ const server = http.createServer((req, res) => {
   // --- API: which app is in front right now (latest reading, or null) ---
   if (req.method === 'GET' && url.pathname === '/api/activity/current') {
     return sendJson(res, 200, latestActivity);
+  }
+
+  // --- API: today's time per app, from the activity log ---
+  if (req.method === 'GET' && url.pathname === '/api/activity/today') {
+    const from = startOfDay(new Date()); // since local midnight
+    const { apps, totalMs } = timePerApp(readActivityLog(), from, null);
+    return sendJson(res, 200, { from: from.toISOString(), apps, totalMs });
   }
 
   // --- API: the running timer (so it survives closing the app) ---
@@ -537,5 +614,6 @@ if (require.main === module || IS_PACKAGED) {
 
 module.exports = {
   calculateDurationMs, totalsByCategory, resolveRange, removeSessionById, updateSession,
-  validateActiveSession, parseFrontAsn, parseAppName, formatActivityLine, appendActivity
+  validateActiveSession, parseFrontAsn, parseAppName, formatActivityLine, appendActivity,
+  parseActivityLog, timePerApp
 };

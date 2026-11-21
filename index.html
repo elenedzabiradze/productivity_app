@@ -164,6 +164,29 @@
     font-weight: 600;
   }
 
+  /* --- "Today by App" card (reuses the .totals-row layout) --- */
+
+  /* App names vary in length, so a wider label column that cuts off
+     very long names with "…" instead of the 64px category column. */
+  .app-label {
+    width: 150px;
+    flex-shrink: 0;
+    font-size: 14px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* One color for every app: apps don't have meaning-carrying colors. */
+  .bar-app { background: var(--accent); }
+
+  /* The folded "Other apps" row: a lighter bar and muted label. */
+  .bar-app-rest { background: #9db3f4; }
+
+  .app-label.app-rest {
+    color: var(--muted);
+  }
+
   /* Small green dot = tracking is live. */
   .now-dot {
     width: 8px;
@@ -561,6 +584,11 @@
     <label>To <input type="date" id="toDate"></label>
   </div>
   <div id="totalsList"></div>
+</div>
+
+<div class="card">
+  <h2>Today by App</h2>
+  <div id="appsList"></div>
 </div>
 
 <div class="card">
@@ -1153,10 +1181,79 @@
     }
   }
 
+  // --- "Today by App" card ---
+  // The server adds up the activity log (/api/activity/today); the page draws
+  // the top apps as bars and refreshes every 15 seconds.
+
+  const appsList = document.getElementById('appsList');
+  const MAX_APP_ROWS = 10; // more than this are folded into one "Other apps" row
+
+  // Builds one row: name, bar (share of today's total), time, percent.
+  function appRowHtml(label, ms, totalMs, isRest) {
+    const percent = totalMs > 0 ? Math.round((ms / totalMs) * 100) : 0;
+    const tooltip = `${label}: ${formatDuration(ms)} (${percent}% of today)`;
+    return `
+      <div class="totals-row">
+        <span class="app-label${isRest ? ' app-rest' : ''}" title="${escapeHtml(label)}">${escapeHtml(label)}</span>
+        <div class="bar-track" title="${escapeHtml(tooltip)}">
+          <div class="bar-fill ${isRest ? 'bar-app-rest' : 'bar-app'}" style="width: ${percent}%"></div>
+        </div>
+        <span class="totals-value">
+          <span class="totals-duration">${formatDuration(ms)}</span>
+          <span class="totals-percent">${percent}%</span>
+        </span>
+      </div>
+    `;
+  }
+
+  // App names come from other programs, so make sure they can't inject HTML.
+  function escapeHtml(text) {
+    return String(text).replace(/[&<>"']/g, ch => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[ch]));
+  }
+
+  async function refreshAppsToday() {
+    let data;
+    try {
+      const res = await fetch('/api/activity/today');
+      data = await res.json();
+    } catch (err) {
+      appsList.innerHTML = '<p class="totals-message">Could not load app activity.</p>';
+      return;
+    }
+
+    if (data.apps.length === 0) {
+      appsList.innerHTML = '<p class="totals-message">No app activity recorded today yet.</p>';
+      return;
+    }
+
+    const shown = data.apps.slice(0, MAX_APP_ROWS);
+    const rest = data.apps.slice(MAX_APP_ROWS);
+    let html = shown.map(a => appRowHtml(a.app, a.ms, data.totalMs, false)).join('');
+    if (rest.length > 0) {
+      const restMs = rest.reduce((sum, a) => sum + a.ms, 0);
+      const label = `Other apps (${rest.length})`;
+      html += appRowHtml(label, restMs, data.totalMs, true);
+    }
+    html += `
+      <div class="totals-row totals-total">
+        <span>Total</span>
+        <span class="totals-value">
+          <span class="totals-duration">${formatDuration(data.totalMs)}</span>
+          <span class="totals-percent"></span>
+        </span>
+      </div>
+    `;
+    appsList.innerHTML = html;
+  }
+
   loadSessions();
   restoreRunningTimer();
   refreshNowApp();
   setInterval(refreshNowApp, 5000);
+  refreshAppsToday();
+  setInterval(refreshAppsToday, 15000);
 </script>
 
 </body>
