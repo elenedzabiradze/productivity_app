@@ -252,6 +252,11 @@
     background: #fafbfc;
   }
 
+  /* Date / Start / End columns: lighter gray, so task and duration stand out. */
+  td.cell-muted {
+    color: var(--muted);
+  }
+
   /* Small "×" button at the end of each session row. Grey until hovered. */
   .delete-btn {
     padding: 2px 8px;
@@ -1058,9 +1063,9 @@
       row.innerHTML = `
         <td>${s.task}</td>
         <td>${categoryBadge(s.category)}</td>
-        <td>${formatDate(s.startTime)}</td>
-        <td>${formatTime(s.startTime)}</td>
-        <td>${formatTime(s.endTime)}</td>
+        <td class="cell-muted">${formatDate(s.startTime)}</td>
+        <td class="cell-muted">${formatTime(s.startTime)}</td>
+        <td class="cell-muted">${formatTime(s.endTime)}</td>
         <td>${formatDuration(s.durationMs)}</td>
       `;
 
