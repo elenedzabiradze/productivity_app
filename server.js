@@ -14,7 +14,7 @@
 //      turns the log into today's time per app. After 5 minutes without
 //      keyboard/mouse input, readings are marked idle and not counted.
 //   7. Keeps a queue of "nudges" (notifications) that the desktop app collects
-//      from /api/nudges/due and shows.
+//      from /api/nudges/due and shows. Nudge settings: /api/settings.
 //
 // No external packages needed — just Node's built-in tools.
 //
@@ -49,6 +49,8 @@ const INDEX_FILE = path.join(__dirname, 'index.html');
 const ACTIVE_FILE = path.join(DATA_DIR, 'active.json');
 // Automatic tracking log: one line per reading of which app was in front.
 const ACTIVITY_FILE = path.join(DATA_DIR, 'activity.jsonl');
+// Nudge settings (work length, idle nudge).
+const SETTINGS_FILE = path.join(DATA_DIR, 'settings.json');
 
 // Make sure sessions.json exists before we start, so reads never fail.
 if (!fs.existsSync(DATA_FILE)) {
@@ -472,6 +474,68 @@ function createNudgeQueue(maxSize) {
 
 const nudgeQueue = createNudgeQueue(MAX_QUEUED_NUDGES);
 
+// --- Nudge settings (used by /api/settings) ---
+
+const DEFAULT_SETTINGS = Object.freeze({
+  workMinutes: 25,   // break nudge after this much active work: 25, 50, or "off"
+  idleEnabled: true, // idle nudge on/off
+  idleMinutes: 10    // idle nudge after this many minutes without input (1–240)
+});
+const WORK_MINUTES_CHOICES = [25, 50, 'off'];
+
+// Each setting's rule: returns an error message if the value is not allowed.
+const SETTING_RULES = {
+  workMinutes: v => WORK_MINUTES_CHOICES.includes(v)
+    ? null : 'Work length must be 25, 50 or "off"',
+  idleEnabled: v => typeof v === 'boolean'
+    ? null : 'Idle nudge on/off must be true or false',
+  idleMinutes: v => Number.isInteger(v) && v >= 1 && v <= 240
+    ? null : 'Idle minutes must be a whole number from 1 to 240'
+};
+
+// Reading from disk: start from the defaults and take each saved value that is
+// still valid. A missing, broken or hand-edited file can never break the app.
+function normalizeSettings(saved) {
+  const settings = { ...DEFAULT_SETTINGS };
+  if (saved && typeof saved === 'object') {
+    for (const key of Object.keys(SETTING_RULES)) {
+      if (key in saved && SETTING_RULES[key](saved[key]) === null) {
+        settings[key] = saved[key];
+      }
+    }
+  }
+  return settings;
+}
+
+// Changing settings: returns the new settings, or throws with a readable
+// message if any changed value isn't allowed (then nothing is changed).
+// Only the settings being changed need to be sent; unknown names are ignored.
+function applySettingsChange(current, changes) {
+  if (!changes || typeof changes !== 'object' || Array.isArray(changes)) {
+    throw new Error('Settings must be sent as an object');
+  }
+  const updated = { ...current };
+  for (const key of Object.keys(SETTING_RULES)) {
+    if (!(key in changes)) continue;
+    const problem = SETTING_RULES[key](changes[key]);
+    if (problem) throw new Error(problem);
+    updated[key] = changes[key];
+  }
+  return updated;
+}
+
+function readSettings() {
+  try {
+    return normalizeSettings(JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf8')));
+  } catch (err) {
+    return { ...DEFAULT_SETTINGS }; // no file yet, or unreadable
+  }
+}
+
+function writeSettings(settings) {
+  fs.writeFileSync(SETTINGS_FILE, JSON.stringify(settings, null, 2));
+}
+
 // Collects a request's body and parses it as JSON. Calls onBody(data) on
 // success, or replies with a 400 error if the body isn't valid JSON.
 function readJsonBody(req, res, onBody) {
@@ -524,6 +588,26 @@ const server = http.createServer((req, res) => {
   // Each nudge is handed out once: the queue is emptied by this request.
   if (req.method === 'GET' && url.pathname === '/api/nudges/due') {
     return sendJson(res, 200, nudgeQueue.takeAll());
+  }
+
+  // --- API: nudge settings ---
+  if (url.pathname === '/api/settings') {
+    if (req.method === 'GET') {
+      return sendJson(res, 200, readSettings());
+    }
+    if (req.method === 'PUT') {
+      readJsonBody(req, res, changes => {
+        let updated;
+        try {
+          updated = applySettingsChange(readSettings(), changes);
+        } catch (err) {
+          return sendJson(res, 400, { error: err.message });
+        }
+        writeSettings(updated);
+        sendJson(res, 200, updated);
+      });
+      return;
+    }
   }
 
   // --- API: queue a test notification ("Send test notification" button) ---
@@ -701,5 +785,6 @@ if (require.main === module || IS_PACKAGED) {
 module.exports = {
   calculateDurationMs, totalsByCategory, resolveRange, removeSessionById, updateSession,
   validateActiveSession, parseFrontAsn, parseAppName, formatActivityLine, appendActivity,
-  parseActivityLog, timePerApp, parseIdleSeconds, isIdle, createNudgeQueue
+  parseActivityLog, timePerApp, parseIdleSeconds, isIdle, createNudgeQueue,
+  DEFAULT_SETTINGS, normalizeSettings, applySettingsChange
 };

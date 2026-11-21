@@ -176,9 +176,9 @@ Server settings (environment variables, both optional):
 - Ignored by Git in the project folder, like the other data files.
 
 ### macOS permissions
-- Notifications: macOS may ask once to allow notifications from Productivity Tracker; it can
-  be changed later in System Settings → Notifications. To be confirmed in step 1, since the
-  app is not signed by a registered Apple developer.
+- Notifications: confirmed in step 1 — macOS did NOT ask for permission; the test
+  notification simply appeared, also with the window minimised. Notifications can still be
+  turned off or changed in System Settings → Notifications → Productivity Tracker.
 - No other permissions (idle time and app names already need none).
 
 ### API (planned)

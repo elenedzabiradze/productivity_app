@@ -15,3 +15,6 @@ src-tauri/binaries/
 
 # Automatic tracking log (which app was in front) — personal data.
 activity.jsonl
+
+# Nudge settings — personal data.
+settings.json
