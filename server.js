@@ -18,13 +18,25 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+// Tells us whether we're running as the packaged single-file program that the
+// desktop app starts (see sea-config.json), or as plain `node server.js`.
+const sea = require('node:sea');
+const IS_PACKAGED = sea.isSea();
 
-const PORT = 3000;
-const DATA_FILE = path.join(__dirname, 'sessions.json');
+// 3000 normally; can be changed with the PORT setting (handy for testing).
+const PORT = Number(process.env.PORT) || 3000;
+
+// Where sessions.json / active.json live. The desktop app passes its own
+// folder (~/Library/Application Support/...) in DATA_DIR; otherwise we use
+// this project folder, as before.
+const DATA_DIR = process.env.DATA_DIR || __dirname;
+fs.mkdirSync(DATA_DIR, { recursive: true });
+
+const DATA_FILE = path.join(DATA_DIR, 'sessions.json');
 const INDEX_FILE = path.join(__dirname, 'index.html');
 // Holds the session whose timer is running right now (if any), so it
 // survives closing the app. Deleted again when the session is stopped.
-const ACTIVE_FILE = path.join(__dirname, 'active.json');
+const ACTIVE_FILE = path.join(DATA_DIR, 'active.json');
 
 // Make sure sessions.json exists before we start, so reads never fail.
 if (!fs.existsSync(DATA_FILE)) {
@@ -381,6 +393,13 @@ const server = http.createServer((req, res) => {
 
   // --- Everything else: serve the app's HTML page ---
   if (req.method === 'GET' && (req.url === '/' || req.url === '/index.html')) {
+    // In the packaged program, index.html is built in (an "asset") rather
+    // than being a separate file on disk.
+    if (IS_PACKAGED) {
+      res.writeHead(200, { 'Content-Type': 'text/html' });
+      res.end(sea.getAsset('index.html', 'utf8'));
+      return;
+    }
     fs.readFile(INDEX_FILE, (err, content) => {
       if (err) {
         res.writeHead(500, { 'Content-Type': 'text/plain' });
@@ -397,11 +416,23 @@ const server = http.createServer((req, res) => {
   res.end('Not found');
 });
 
-// Only start the server when this file is run directly (`node server.js`).
-// When a test file loads it with require(), we just hand over the functions.
-if (require.main === module) {
+// Only start the server when this file is run directly (`node server.js`) or
+// as the packaged program. When a test file loads it with require(), we just
+// hand over the functions.
+if (require.main === module || IS_PACKAGED) {
+  // If port 3000 is taken (e.g. `node server.js` is already running while the
+  // desktop app starts its own copy), say so clearly and quit — the app will
+  // simply use the server that's already running.
+  server.on('error', err => {
+    if (err.code === 'EADDRINUSE') {
+      console.error(`Port ${PORT} is already in use — another server is probably running. Exiting.`);
+      process.exit(1);
+    }
+    throw err;
+  });
   server.listen(PORT, () => {
     console.log(`Focus Session Tracker running at http://localhost:${PORT}`);
+    console.log(`Data folder: ${DATA_DIR}`);
   });
 }
 

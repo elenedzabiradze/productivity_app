@@ -9,3 +9,6 @@ node_modules/
 
 # The currently running timer — personal data, like sessions.json.
 active.json
+
+# Packaged server program for the desktop app (~100 MB) — rebuild with: npm run build:server
+src-tauri/binaries/
