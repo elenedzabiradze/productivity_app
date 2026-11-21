@@ -192,6 +192,21 @@
     background: #fafbfc;
   }
 
+  /* Small "×" button at the end of each session row. Grey until hovered. */
+  .delete-btn {
+    padding: 2px 8px;
+    font-size: 16px;
+    line-height: 1;
+    background: transparent;
+    color: #9ca3af;
+  }
+
+  .delete-btn:hover:not(:disabled) {
+    color: var(--red);
+    background: #fdecec;
+    opacity: 1;
+  }
+
   .badge {
     display: inline-block;
     padding: 2px 9px;
@@ -304,6 +319,7 @@
         <th>Start</th>
         <th>End</th>
         <th>Duration</th>
+        <th></th>
       </tr>
     </thead>
     <tbody id="sessionsBody"></tbody>
@@ -540,8 +556,43 @@
         <td>${formatTime(s.endTime)}</td>
         <td>${formatDuration(s.durationMs)}</td>
       `;
+
+      // Delete button — only for sessions the server knows about (they have
+      // an id). A session kept only in the page after a failed save has none.
+      const actionCell = document.createElement('td');
+      if (s.id) {
+        const deleteBtn = document.createElement('button');
+        deleteBtn.className = 'delete-btn';
+        deleteBtn.textContent = '×';
+        deleteBtn.title = 'Delete this session';
+        deleteBtn.addEventListener('click', () => deleteSession(s));
+        actionCell.appendChild(deleteBtn);
+      }
+      row.appendChild(actionCell);
+
       sessionsBody.appendChild(row);
     }
+  }
+
+  // Asks for confirmation, tells the server to delete the session, then
+  // removes it from the page and refreshes the table and totals.
+  async function deleteSession(s) {
+    if (!confirm(`Delete "${s.task}"? This can't be undone.`)) return;
+
+    try {
+      const res = await fetch('/api/sessions/' + encodeURIComponent(s.id), { method: 'DELETE' });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || 'Request failed');
+      }
+    } catch (err) {
+      console.error('Could not delete session:', err);
+      alert('Could not delete this session: ' + err.message);
+      return;
+    }
+
+    sessions = sessions.filter(other => other.id !== s.id);
+    renderSessions();
   }
 
   loadSessions();

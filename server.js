@@ -5,6 +5,7 @@
 //   2. Provides a small API (/api/sessions) that reads and writes
 //      sessions.json, so your session history survives closing the app.
 //   3. Provides /api/totals, which adds up time per category for a date range.
+//   4. Lets you delete a session with DELETE /api/sessions/<id>.
 //
 // No external packages needed — just Node's built-in tools.
 //
@@ -58,6 +59,15 @@ function calculateDurationMs(startTime, endTime) {
     throw new Error('endTime cannot be before startTime');
   }
   return end.getTime() - start.getTime();
+}
+
+// --- Deleting a session (used by DELETE /api/sessions/<id>) ---
+
+// Returns a NEW list without the session whose id matches, plus whether one
+// was actually found. Doesn't touch the file — the caller decides to save.
+function removeSessionById(sessions, id) {
+  const remaining = sessions.filter(s => String(s.id) !== String(id));
+  return { sessions: remaining, removed: remaining.length < sessions.length };
 }
 
 // --- Category totals (used by GET /api/totals) ---
@@ -212,6 +222,17 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // --- API: delete one session, e.g. DELETE /api/sessions/1788695632957 ---
+  if (req.method === 'DELETE' && url.pathname.startsWith('/api/sessions/')) {
+    const id = decodeURIComponent(url.pathname.slice('/api/sessions/'.length));
+    const result = removeSessionById(readSessions(), id);
+    if (!result.removed) {
+      return sendJson(res, 404, { error: 'No session with id ' + id });
+    }
+    writeSessions(result.sessions);
+    return sendJson(res, 200, { deleted: id });
+  }
+
   // --- Everything else: serve the app's HTML page ---
   if (req.method === 'GET' && (req.url === '/' || req.url === '/index.html')) {
     fs.readFile(INDEX_FILE, (err, content) => {
@@ -238,4 +259,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { calculateDurationMs, totalsByCategory, resolveRange };
+module.exports = { calculateDurationMs, totalsByCategory, resolveRange, removeSessionById };
