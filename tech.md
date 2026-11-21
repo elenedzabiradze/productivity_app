@@ -85,11 +85,24 @@ Server settings (environment variables, both optional):
   Window titles, a possible later stage, WOULD need Accessibility or Screen Recording permission.
 - Caveat: `lsappinfo` ships with macOS but isn't officially documented by Apple. If a future
   macOS changes it, the fallback is Apple's official NSWorkspace API, called from the Rust side.
-- The tracker itself counts as an app ("Productivity Tracker") while you're looking at it.
+- Failed or empty readings are skipped: if `lsappinfo` errors, times out, or its output has
+  no app name, nothing is logged for that check and the server carries on; the next check
+  is 5 s later. Parsing the output is a separate, unit-tested function.
+
+### Idle detection
+- Alongside each reading, the server reads "time since the last keyboard or mouse input"
+  with macOS's `ioreg -c IOHIDSystem` (value HIDIdleTime, in nanoseconds). About 4 ms;
+  no permission needed (checked on this Mac).
+- 5 minutes or more without input → the reading is saved with "idle": true and is not
+  counted in the per-app totals.
+- If the idle check fails, the user is treated as active (the time counts) — never a crash
+  or a dropped reading.
+- Known gap: the first 5 minutes away still count, since idle is only detected at 5 minutes.
 
 ### Storage
 - activity.jsonl in DATA_DIR, one line per reading:
   {"t":"2026-11-21T21:30:05.000Z","app":"Code"}
+  or, while idle: {"t":"2026-11-21T21:45:05.000Z","app":"Code","idle":true}
 - "JSON Lines" (one JSON object per line) instead of one big JSON array, so each reading is
   a quick append rather than rewriting the whole file every 5 seconds.
 - Size: about 50 bytes per reading → ~36 KB per hour of use, ~0.3 MB per 8-hour day.
@@ -99,8 +112,12 @@ Server settings (environment variables, both optional):
 - Each reading counts as the time until the next reading, capped at 10 seconds
   (2 × the interval). The cap means gaps — app closed, Mac asleep — don't count as time.
 - The last reading counts as 5 seconds.
+- Idle readings count as no time.
+- Readings of "Productivity Tracker" (this app; bundle ID com.productivitytracker.desktop)
+  count as no time and are left out of the result — they stay in the log.
+- Broken lines in the log, or lines without an app name, are skipped.
 - "Today" = since local midnight, the same rule as the category totals.
 
 ### API (planned)
-- GET /api/activity/current   latest reading: { t, app } (or null)
+- GET /api/activity/current   latest reading: { t, app, idle } (or null)
 - GET /api/activity/today     time per app today: [{ app, ms }], largest first

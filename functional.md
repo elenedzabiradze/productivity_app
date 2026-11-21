@@ -27,12 +27,17 @@ you pressing anything.
 - Show the current app in the tracker (e.g. "Now: Code")
 - Save every reading (time + app name) to an activity log on this Mac
 - "Today by app": how long each app was in front today, largest first
+  - The tracker itself ("Productivity Tracker") is left out of these totals
+    (its readings are still logged, just not counted)
+- Idle detection: after 5 minutes with no keyboard or mouse input, time is not counted
+  and the tracker shows "Now: idle". (The first 5 minutes away still count, because idle
+  is only known once 5 minutes have passed.)
+- If a reading fails, it's skipped quietly and tracking carries on
 - Privacy: the log stays on this Mac, in the app's data folder; nothing is sent anywhere
 - Tracking only happens while the tracker is running (the desktop app, or `node server.js`);
   nothing is recorded while it's closed or the Mac is asleep
 
 Out of scope for Week 4:
 - Window titles / website names (would need extra macOS permissions)
-- Idle detection: if you walk away with an app in front, that time still counts
 - Linking app time to categories or sessions
 - Deleting or trimming old activity data
