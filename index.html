@@ -486,11 +486,17 @@
         body: JSON.stringify(newSession)
       });
       const saved = await res.json();
-      sessions.push({
-        ...saved,
-        startTime: new Date(saved.startTime),
-        endTime: new Date(saved.endTime)
-      });
+      if (!res.ok) {
+        // The server is running but refused the session (e.g. end before
+        // start). Don't add it to the list — `saved` is an error, not a session.
+        alert('This session was not saved: ' + (saved.error || 'the server rejected it.'));
+      } else {
+        sessions.push({
+          ...saved,
+          startTime: new Date(saved.startTime),
+          endTime: new Date(saved.endTime)
+        });
+      }
     } catch (err) {
       console.error('Could not save session to the server:', err);
       alert('Could not save this session — the server might not be running. ' +
