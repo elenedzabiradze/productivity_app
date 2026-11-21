@@ -32,7 +32,7 @@ How it starts (src-tauri/src/lib.rs):
 2. If nothing answers on port 3000, the app starts its bundled server with
    DATA_DIR = ~/Library/Application Support/com.productivitytracker.desktop/
    If a server is already running (e.g. `node server.js`), it uses that one instead.
-3. Once the server answers, the window switches to http://localhost:3000.
+3. Once the server answers, the window switches to http://127.0.0.1:3000.
    After 15 seconds without an answer, the page shows an error message.
 4. On quit, the app stops the server it started.
 
@@ -71,3 +71,36 @@ Server settings (environment variables, both optional):
 - The app is unsigned; on another Mac, macOS would warn on first open (right-click → Open)
 - The browser's alert()/confirm() don't work in the Tauri window — use the page's own
   showMessage() / askToConfirm() pop-ups instead
+
+## Week 4: automatic tracking (planned)
+
+### Reading the frontmost app
+- Done by the server (server.js), not the Rust code, so it works the same in the desktop
+  app and with `node server.js`, and the logic is testable with `node --test`.
+- Every 5 seconds the server runs macOS's built-in `lsappinfo` tool:
+  `lsappinfo front` (which app is in front) then `lsappinfo info -only name <id>` (its name).
+  Takes about 10 ms. Run with child_process.execFile (no shell).
+- macOS permissions: none needed. Which app is in front, and its name, is public on macOS —
+  no Accessibility, Screen Recording or Automation prompt. (Checked on this Mac: no prompt.)
+  Window titles, a possible later stage, WOULD need Accessibility or Screen Recording permission.
+- Caveat: `lsappinfo` ships with macOS but isn't officially documented by Apple. If a future
+  macOS changes it, the fallback is Apple's official NSWorkspace API, called from the Rust side.
+- The tracker itself counts as an app ("Productivity Tracker") while you're looking at it.
+
+### Storage
+- activity.jsonl in DATA_DIR, one line per reading:
+  {"t":"2026-11-21T21:30:05.000Z","app":"Code"}
+- "JSON Lines" (one JSON object per line) instead of one big JSON array, so each reading is
+  a quick append rather than rewriting the whole file every 5 seconds.
+- Size: about 50 bytes per reading → ~36 KB per hour of use, ~0.3 MB per 8-hour day.
+- Ignored by Git in the project folder, like sessions.json.
+
+### Turning readings into time per app (pure function, unit-tested)
+- Each reading counts as the time until the next reading, capped at 10 seconds
+  (2 × the interval). The cap means gaps — app closed, Mac asleep — don't count as time.
+- The last reading counts as 5 seconds.
+- "Today" = since local midnight, the same rule as the category totals.
+
+### API (planned)
+- GET /api/activity/current   latest reading: { t, app } (or null)
+- GET /api/activity/today     time per app today: [{ app, ms }], largest first
