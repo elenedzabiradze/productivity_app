@@ -527,22 +527,25 @@ const server = http.createServer((req, res) => {
     return sendJson(res, 200, readSessions());
   }
 
-  // --- API: save a newly completed session ---
+  // --- API: save a new session (from the Stop button, or "Add past session") ---
   if (req.method === 'POST' && req.url === '/api/sessions') {
     let body = '';
     req.on('data', chunk => { body += chunk; });
     req.on('end', () => {
-      let newSession;
+      let input;
       try {
-        newSession = JSON.parse(body);
+        input = JSON.parse(body);
       } catch (err) {
         return sendJson(res, 400, { error: 'Invalid JSON in request body' });
       }
 
-      // Work out the duration here from the start/end times, rather than
-      // trusting whatever number the page sent.
+      // Same checks as editing: task not empty, a known category, valid times
+      // with the end not before the start. Also works out durationMs from the
+      // times rather than trusting a number sent by the page, and keeps only
+      // the known fields.
+      let newSession;
       try {
-        newSession.durationMs = calculateDurationMs(newSession.startTime, newSession.endTime);
+        newSession = updateSession({}, input);
       } catch (err) {
         return sendJson(res, 400, { error: err.message });
       }

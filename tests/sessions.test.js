@@ -108,3 +108,26 @@ test('edit: rejects an end time before the start time', () => {
   const changes = { ...validChanges(), endTime: '2026-11-21T09:00:00.000Z' };
   assert.throws(() => updateSession(existing(), changes), /endTime cannot be before startTime/);
 });
+
+// ---------- new sessions (POST /api/sessions uses updateSession({}, input)) ----------
+
+test('new session: builds a clean session with the duration worked out', () => {
+  const created = updateSession({}, {
+    task: ' Reading a book ', category: 'Study',
+    startTime: '2026-11-21T18:00:00.000Z', endTime: '2026-11-21T18:40:00.000Z',
+    durationMs: 1, extra: 'ignored'
+  });
+  assert.deepStrictEqual(created, {
+    task: 'Reading a book', category: 'Study',
+    startTime: '2026-11-21T18:00:00.000Z', endTime: '2026-11-21T18:40:00.000Z',
+    durationMs: 40 * 60 * 1000
+  });
+});
+
+test('new session: the same checks as editing apply', () => {
+  const ok = { task: 'Reading', category: 'Study', startTime: '2026-11-21T18:00:00Z', endTime: '2026-11-21T18:40:00Z' };
+  assert.throws(() => updateSession({}, { ...ok, task: '' }), /Task cannot be empty/);
+  assert.throws(() => updateSession({}, { ...ok, category: 'Reading' }), /Category must be one of/);
+  assert.throws(() => updateSession({}, { ...ok, endTime: '2026-11-21T17:00:00Z' }), /endTime cannot be before startTime/);
+  assert.throws(() => updateSession({}, { ...ok, startTime: undefined }), /startTime/);
+});

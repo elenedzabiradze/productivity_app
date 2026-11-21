@@ -393,6 +393,14 @@
     color: white;
   }
 
+  /* Small secondary button in the Session History header. */
+  #addPastBtn {
+    padding: 6px 12px;
+    font-size: 13px;
+    background: #eef0f3;
+    color: var(--text);
+  }
+
   .badge {
     display: inline-block;
     padding: 2px 9px;
@@ -597,7 +605,10 @@
 </div>
 
 <div class="card">
-  <h2>Session History</h2>
+  <div class="totals-header">
+    <h2>Session History</h2>
+    <button type="button" id="addPastBtn">+ Add past session</button>
+  </div>
   <p id="emptyMsg">No sessions recorded yet.</p>
   <table id="sessionsTable" style="display: none;">
     <thead>
@@ -627,7 +638,7 @@
 <!-- Pop-up form for editing a past session. Hidden until ✎ is clicked. -->
 <dialog id="editDialog">
   <form id="editForm">
-    <h2>Edit Session</h2>
+    <h2 id="editTitle">Edit Session</h2>
     <label>Task
       <input type="text" id="editTask" required>
     </label>
@@ -1037,10 +1048,12 @@
     emptyMsg.style.display = 'none';
     sessionsTable.style.display = 'table';
 
-    // Show most recent session first
+    // Show the most recent session first, by when it STARTED — so a session
+    // added or edited afterwards still lands in the right place in time.
+    // (A sorted copy; the `sessions` array itself is left as it is.)
+    const newestFirst = [...sessions].sort((a, b) => b.startTime - a.startTime);
     sessionsBody.innerHTML = '';
-    for (let i = sessions.length - 1; i >= 0; i--) {
-      const s = sessions[i];
+    for (const s of newestFirst) {
       const row = document.createElement('tr');
       row.innerHTML = `
         <td>${s.task}</td>
@@ -1107,6 +1120,9 @@
   const editStart = document.getElementById('editStart');
   const editEnd = document.getElementById('editEnd');
   const editError = document.getElementById('editError');
+  const editTitle = document.getElementById('editTitle');
+  const editSave = document.getElementById('editSave');
+  // The session being edited, or null when the form is adding a new past session.
   let sessionBeingEdited = null;
 
   // Date/time boxes (<input type="datetime-local">) want local time written
@@ -1118,6 +1134,8 @@
 
   function openEditDialog(s) {
     sessionBeingEdited = s;
+    editTitle.textContent = 'Edit Session';
+    editSave.textContent = 'Save';
     editTask.value = s.task;
     editCategory.value = s.category;
     editStart.value = toLocalInputValue(s.startTime);
@@ -1126,6 +1144,25 @@
     editDialog.showModal();
   }
 
+  // Same form, used to add a session that already happened (e.g. reading a
+  // book away from the computer). Starts with "the last 30 minutes".
+  function openAddDialog() {
+    sessionBeingEdited = null;
+    editTitle.textContent = 'Add Past Session';
+    editSave.textContent = 'Add';
+    const end = new Date();
+    end.setSeconds(0, 0); // whole minutes are easier to adjust
+    const start = new Date(end.getTime() - 30 * 60 * 1000);
+    editTask.value = '';
+    editCategory.value = categorySelect.value;
+    editStart.value = toLocalInputValue(start);
+    editEnd.value = toLocalInputValue(end);
+    editError.textContent = '';
+    editDialog.showModal();
+    editTask.focus();
+  }
+
+  document.getElementById('addPastBtn').addEventListener('click', openAddDialog);
   document.getElementById('editCancel').addEventListener('click', () => editDialog.close());
 
   editForm.addEventListener('submit', async (event) => {
@@ -1140,9 +1177,13 @@
       endTime: new Date(editEnd.value).toISOString()
     };
 
+    // Editing → replace that session (PUT). Adding → create a new one (POST).
+    const isAdding = sessionBeingEdited === null;
+    const url = isAdding ? '/api/sessions' : '/api/sessions/' + encodeURIComponent(sessionBeingEdited.id);
+
     try {
-      const res = await fetch('/api/sessions/' + encodeURIComponent(sessionBeingEdited.id), {
-        method: 'PUT',
+      const res = await fetch(url, {
+        method: isAdding ? 'POST' : 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(changes)
       });
@@ -1153,9 +1194,13 @@
         return;
       }
 
-      // Swap the old session for the updated one from the server.
-      const updated = { ...data, startTime: new Date(data.startTime), endTime: new Date(data.endTime) };
-      sessions = sessions.map(other => other.id === updated.id ? updated : other);
+      const saved = { ...data, startTime: new Date(data.startTime), endTime: new Date(data.endTime) };
+      if (isAdding) {
+        sessions.push(saved);
+      } else {
+        // Swap the old session for the updated one from the server.
+        sessions = sessions.map(other => other.id === saved.id ? saved : other);
+      }
       editDialog.close();
       renderSessions();
     } catch (err) {
