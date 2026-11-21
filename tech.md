@@ -186,3 +186,12 @@ Server settings (environment variables, both optional):
 - POST /api/nudges/test    queue a test notification (to check notifications work)
 - GET  /api/settings       nudge settings
 - PUT  /api/settings       change nudge settings (validated)
+
+### Later (not this week — see steps-week5.md)
+- Menu bar timer.
+- Distraction nudge: an editable app-type list (work / communication / distraction), compared
+  with the running session's category. Builds on the frontmost-app readings and the nudge queue.
+- Scattered-switching nudge and focus metrics (switches per 10 minutes, longest stretch in one
+  app): both computable from activity.jsonl as pure, testable functions.
+- SQLite migration: back up the data folder first, carry over all existing data, keep the old
+  JSON files until confirmed, all tests passing afterwards.

@@ -57,3 +57,14 @@ computer. Details: functional.md and tech.md, "Week 5" sections.
 ## Later (not this week)
 - **Menu bar timer**: a stopwatch icon in the Mac menu bar showing the running time and
   current app, with Start/Stop from there — no need to keep the window open.
+- **Distraction nudge**: an editable list that sorts apps into types — work, communication,
+  distraction — plus a check that compares the running session's category with the type of
+  the frontmost app (e.g. a Work session while a distraction app is in front → nudge).
+- **Scattered-switching nudge**: a nudge when there are too many app switches within
+  10 minutes.
+- **Focus metrics**: app switches per 10 minutes, and the longest stretch spent in one app.
+- **SQLite migration**: move from JSON files to an SQLite database —
+  - back up the data folder first,
+  - carry over all existing data (sessions, running timer, activity log, settings),
+  - keep the old files until confirmed by you,
+  - all tests still passing afterwards.
