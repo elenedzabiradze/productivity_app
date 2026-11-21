@@ -64,3 +64,61 @@ test('name: an empty or blank name means no reading', () => {
   assert.strictEqual(parseAppName('"LSDisplayName"=""'), null);
   assert.strictEqual(parseAppName('"LSDisplayName"="   "'), null);
 });
+
+// ---------- saving readings to the activity log ----------
+
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const { formatActivityLine, appendActivity } = require('../server.js');
+
+// Each test gets its own empty temporary folder, so real data is never touched.
+function tempLogFile() {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'activity-test-'));
+  return path.join(dir, 'activity.jsonl');
+}
+
+test('log line: one JSON object followed by a newline', () => {
+  const line = formatActivityLine({ t: '2026-11-21T21:46:44.108Z', app: 'Code' });
+  assert.strictEqual(line, '{"t":"2026-11-21T21:46:44.108Z","app":"Code"}\n');
+});
+
+test('log line: app names with quotes or backslashes stay valid JSON', () => {
+  const line = formatActivityLine({ t: '2026-11-21T21:46:44.108Z', app: 'My "Odd" App\\' });
+  assert.strictEqual(line.split('\n').length, 2); // exactly one line + trailing newline
+  assert.strictEqual(JSON.parse(line).app, 'My "Odd" App\\');
+});
+
+test('log line: only time and app name are saved', () => {
+  const line = formatActivityLine({ t: '2026-11-21T21:46:44.108Z', app: 'Code', extra: 'x' });
+  assert.deepStrictEqual(Object.keys(JSON.parse(line)), ['t', 'app']);
+});
+
+test('append: creates the file and adds readings in order, one per line', () => {
+  const file = tempLogFile();
+  assert.strictEqual(appendActivity(file, { t: '2026-11-21T10:00:00.000Z', app: 'Code' }), true);
+  assert.strictEqual(appendActivity(file, { t: '2026-11-21T10:00:05.000Z', app: 'Safari' }), true);
+  const lines = fs.readFileSync(file, 'utf8').trim().split('\n').map(l => JSON.parse(l));
+  assert.deepStrictEqual(lines.map(r => r.app), ['Code', 'Safari']);
+  fs.rmSync(path.dirname(file), { recursive: true });
+});
+
+test('append: keeps what is already in the file', () => {
+  const file = tempLogFile();
+  fs.writeFileSync(file, '{"t":"2026-11-20T09:00:00.000Z","app":"Mail"}\n');
+  appendActivity(file, { t: '2026-11-21T10:00:00.000Z', app: 'Code' });
+  assert.strictEqual(fs.readFileSync(file, 'utf8').trim().split('\n').length, 2);
+  fs.rmSync(path.dirname(file), { recursive: true });
+});
+
+test('append: a failed write returns false instead of crashing', () => {
+  // A folder that doesn't exist can't be written to.
+  const missing = path.join(os.tmpdir(), 'no-such-folder-' + Date.now(), 'activity.jsonl');
+  const originalError = console.error;
+  console.error = () => {}; // keep the expected error message out of the test output
+  try {
+    assert.strictEqual(appendActivity(missing, { t: '2026-11-21T10:00:00.000Z', app: 'Code' }), false);
+  } finally {
+    console.error = originalError;
+  }
+});

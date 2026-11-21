@@ -9,7 +9,8 @@
 //      and delete one with DELETE /api/sessions/<id>.
 //   5. Remembers a running timer in active.json (/api/active), so it can
 //      resume after the app is closed and reopened.
-//   6. Every 5 seconds, notes which app is in front (/api/activity/current).
+//   6. Every 5 seconds, notes which app is in front (/api/activity/current)
+//      and adds it to the activity log, activity.jsonl.
 //
 // No external packages needed — just Node's built-in tools.
 //
@@ -42,6 +43,8 @@ const INDEX_FILE = path.join(__dirname, 'index.html');
 // Holds the session whose timer is running right now (if any), so it
 // survives closing the app. Deleted again when the session is stopped.
 const ACTIVE_FILE = path.join(DATA_DIR, 'active.json');
+// Automatic tracking log: one line per reading of which app was in front.
+const ACTIVITY_FILE = path.join(DATA_DIR, 'activity.jsonl');
 
 // Make sure sessions.json exists before we start, so reads never fail.
 if (!fs.existsSync(DATA_FILE)) {
@@ -291,6 +294,25 @@ async function readFrontmostApp() {
   return parseAppName(await runQuietly(LSAPPINFO, ['info', '-only', 'name', asn]));
 }
 
+// Turns a reading into one line of the activity log ("JSON Lines" format:
+// one JSON object per line), e.g. {"t":"2026-11-21T21:46:44.108Z","app":"Code"}
+function formatActivityLine(reading) {
+  return JSON.stringify({ t: reading.t, app: reading.app }) + '\n';
+}
+
+// Adds one reading to the end of the log file. Returns true if it was saved.
+// Never throws: if writing fails (e.g. disk full), it logs the problem and
+// tracking carries on.
+function appendActivity(filePath, reading) {
+  try {
+    fs.appendFileSync(filePath, formatActivityLine(reading));
+    return true;
+  } catch (err) {
+    console.error('Could not save activity reading:', err.message);
+    return false;
+  }
+}
+
 // The most recent successful reading: { t: ISO time, app: name }, or null.
 let latestActivity = null;
 let readingInProgress = false;
@@ -303,6 +325,7 @@ async function takeActivityReading() {
     // A failed/empty reading is skipped: keep the last good one, log nothing.
     if (app) {
       latestActivity = { t: new Date().toISOString(), app };
+      appendActivity(ACTIVITY_FILE, latestActivity);
     }
   } catch (err) {
     console.error('Activity reading failed:', err.message);
@@ -514,5 +537,5 @@ if (require.main === module || IS_PACKAGED) {
 
 module.exports = {
   calculateDurationMs, totalsByCategory, resolveRange, removeSessionById, updateSession,
-  validateActiveSession, parseFrontAsn, parseAppName
+  validateActiveSession, parseFrontAsn, parseAppName, formatActivityLine, appendActivity
 };

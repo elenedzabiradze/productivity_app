@@ -12,3 +12,6 @@ active.json
 
 # Packaged server program for the desktop app (~100 MB) — rebuild with: npm run build:server
 src-tauri/binaries/
+
+# Automatic tracking log (which app was in front) — personal data.
+activity.jsonl
