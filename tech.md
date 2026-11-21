@@ -68,8 +68,6 @@ Server settings (environment variables, both optional):
 - index.html and server.js are built into the app: changes only reach the app after
   `npx tauri build` (and replacing the copy in /Applications)
 - Built for Apple-chip Macs only (arm64)
-- The server listens on all network interfaces with no login, so devices on the same
-  Wi-Fi could reach it on port 3000 — fine at home, worth restricting to localhost later
 - The app is unsigned; on another Mac, macOS would warn on first open (right-click → Open)
 - The browser's alert()/confirm() don't work in the Tauri window — use the page's own
   showMessage() / askToConfirm() pop-ups instead
