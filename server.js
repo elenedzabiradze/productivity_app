@@ -5,7 +5,8 @@
 //   2. Provides a small API (/api/sessions) that reads and writes
 //      sessions.json, so your session history survives closing the app.
 //   3. Provides /api/totals, which adds up time per category for a date range.
-//   4. Lets you delete a session with DELETE /api/sessions/<id>.
+//   4. Lets you edit a session with PUT /api/sessions/<id>
+//      and delete one with DELETE /api/sessions/<id>.
 //
 // No external packages needed — just Node's built-in tools.
 //
@@ -70,9 +71,37 @@ function removeSessionById(sessions, id) {
   return { sessions: remaining, removed: remaining.length < sessions.length };
 }
 
-// --- Category totals (used by GET /api/totals) ---
-
 const CATEGORIES = ['Work', 'Study', 'Break', 'Other'];
+
+// --- Editing a session (used by PUT /api/sessions/<id>) ---
+
+// Returns an updated COPY of `existing` with the new task, category and
+// times from `changes`. The id is kept, and durationMs is recalculated from
+// the new times. Throws an error with a readable message if anything is
+// invalid, so a bad edit never gets saved.
+function updateSession(existing, changes) {
+  const task = typeof changes.task === 'string' ? changes.task.trim() : '';
+  if (!task) {
+    throw new Error('Task cannot be empty');
+  }
+  if (!CATEGORIES.includes(changes.category)) {
+    throw new Error('Category must be one of: ' + CATEGORIES.join(', '));
+  }
+  // Also checks that both times are valid and end is not before start.
+  const durationMs = calculateDurationMs(changes.startTime, changes.endTime);
+
+  return {
+    ...existing,
+    task,
+    category: changes.category,
+    // Store times in the same ISO format as everywhere else.
+    startTime: new Date(changes.startTime).toISOString(),
+    endTime: new Date(changes.endTime).toISOString(),
+    durationMs
+  };
+}
+
+// --- Category totals (used by GET /api/totals) ---
 
 // Midnight at the start of the given day, in this computer's local time.
 function startOfDay(date) {
@@ -222,6 +251,37 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // --- API: edit one session, e.g. PUT /api/sessions/1788695632957 ---
+  if (req.method === 'PUT' && url.pathname.startsWith('/api/sessions/')) {
+    const id = decodeURIComponent(url.pathname.slice('/api/sessions/'.length));
+    let body = '';
+    req.on('data', chunk => { body += chunk; });
+    req.on('end', () => {
+      let changes;
+      try {
+        changes = JSON.parse(body);
+      } catch (err) {
+        return sendJson(res, 400, { error: 'Invalid JSON in request body' });
+      }
+
+      const sessions = readSessions();
+      const index = sessions.findIndex(s => String(s.id) === id);
+      if (index === -1) {
+        return sendJson(res, 404, { error: 'No session with id ' + id });
+      }
+
+      try {
+        sessions[index] = updateSession(sessions[index], changes);
+      } catch (err) {
+        return sendJson(res, 400, { error: err.message });
+      }
+
+      writeSessions(sessions);
+      sendJson(res, 200, sessions[index]);
+    });
+    return;
+  }
+
   // --- API: delete one session, e.g. DELETE /api/sessions/1788695632957 ---
   if (req.method === 'DELETE' && url.pathname.startsWith('/api/sessions/')) {
     const id = decodeURIComponent(url.pathname.slice('/api/sessions/'.length));
@@ -259,4 +319,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { calculateDurationMs, totalsByCategory, resolveRange, removeSessionById };
+module.exports = { calculateDurationMs, totalsByCategory, resolveRange, removeSessionById, updateSession };

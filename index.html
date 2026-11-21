@@ -207,6 +207,95 @@
     opacity: 1;
   }
 
+  /* Pencil button next to the "×" — same size, turns blue on hover. */
+  .edit-btn {
+    padding: 2px 8px;
+    font-size: 15px;
+    line-height: 1;
+    background: transparent;
+    color: #9ca3af;
+  }
+
+  .edit-btn:hover:not(:disabled) {
+    color: var(--accent);
+    background: #e6edff;
+    opacity: 1;
+  }
+
+  .row-actions {
+    white-space: nowrap;
+    text-align: right;
+  }
+
+  /* Pop-up form for editing a session (uses the built-in <dialog> element). */
+  #editDialog {
+    width: min(420px, calc(100vw - 32px));
+    padding: 20px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    box-shadow: 0 12px 32px rgba(16, 24, 40, 0.18);
+    color: var(--text);
+  }
+
+  #editDialog::backdrop {
+    background: rgba(16, 24, 40, 0.35);
+  }
+
+  #editForm label {
+    display: block;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--muted);
+    margin-bottom: 12px;
+  }
+
+  #editForm input,
+  #editForm select {
+    display: block;
+    width: 100%;
+    margin-top: 4px;
+    padding: 9px 11px;
+    font-size: 14px;
+    font-family: inherit;
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: #fbfbfc;
+  }
+
+  #editForm input:focus,
+  #editForm select:focus {
+    outline: none;
+    border-color: var(--accent);
+    background: white;
+  }
+
+  #editError {
+    color: var(--red);
+    font-size: 13px;
+    margin: 0 0 12px;
+  }
+
+  #editError:empty {
+    display: none;
+  }
+
+  .edit-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+
+  #editCancel {
+    background: #eef0f3;
+    color: var(--text);
+  }
+
+  #editSave {
+    background: var(--accent);
+    color: white;
+  }
+
   .badge {
     display: inline-block;
     padding: 2px 9px;
@@ -325,6 +414,35 @@
     <tbody id="sessionsBody"></tbody>
   </table>
 </div>
+
+<!-- Pop-up form for editing a past session. Hidden until ✎ is clicked. -->
+<dialog id="editDialog">
+  <form id="editForm">
+    <h2>Edit Session</h2>
+    <label>Task
+      <input type="text" id="editTask" required>
+    </label>
+    <label>Category
+      <select id="editCategory">
+        <option value="Work">Work</option>
+        <option value="Study">Study</option>
+        <option value="Break">Break</option>
+        <option value="Other">Other</option>
+      </select>
+    </label>
+    <label>Start
+      <input type="datetime-local" id="editStart" step="1" required>
+    </label>
+    <label>End
+      <input type="datetime-local" id="editEnd" step="1" required>
+    </label>
+    <p id="editError"></p>
+    <div class="edit-actions">
+      <button type="button" id="editCancel">Cancel</button>
+      <button type="submit" id="editSave">Save</button>
+    </div>
+  </form>
+</dialog>
 
 <script>
   // Sessions are persisted on disk by the local server (see server.js),
@@ -557,10 +675,18 @@
         <td>${formatDuration(s.durationMs)}</td>
       `;
 
-      // Delete button — only for sessions the server knows about (they have
-      // an id). A session kept only in the page after a failed save has none.
+      // Edit and delete buttons — only for sessions the server knows about (they
+      // have an id). A session kept only in the page after a failed save has none.
       const actionCell = document.createElement('td');
+      actionCell.className = 'row-actions';
       if (s.id) {
+        const editBtn = document.createElement('button');
+        editBtn.className = 'edit-btn';
+        editBtn.textContent = '✎';
+        editBtn.title = 'Edit this session';
+        editBtn.addEventListener('click', () => openEditDialog(s));
+        actionCell.appendChild(editBtn);
+
         const deleteBtn = document.createElement('button');
         deleteBtn.className = 'delete-btn';
         deleteBtn.textContent = '×';
@@ -594,6 +720,72 @@
     sessions = sessions.filter(other => other.id !== s.id);
     renderSessions();
   }
+
+  // --- Editing a session ---
+
+  const editDialog = document.getElementById('editDialog');
+  const editForm = document.getElementById('editForm');
+  const editTask = document.getElementById('editTask');
+  const editCategory = document.getElementById('editCategory');
+  const editStart = document.getElementById('editStart');
+  const editEnd = document.getElementById('editEnd');
+  const editError = document.getElementById('editError');
+  let sessionBeingEdited = null;
+
+  // Date/time boxes (<input type="datetime-local">) want local time written
+  // as "2026-11-21T14:05:09" — no time zone. This builds that text from a Date.
+  function toLocalInputValue(date) {
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}` +
+           `T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+  }
+
+  function openEditDialog(s) {
+    sessionBeingEdited = s;
+    editTask.value = s.task;
+    editCategory.value = s.category;
+    editStart.value = toLocalInputValue(s.startTime);
+    editEnd.value = toLocalInputValue(s.endTime);
+    editError.textContent = '';
+    editDialog.showModal();
+  }
+
+  document.getElementById('editCancel').addEventListener('click', () => editDialog.close());
+
+  editForm.addEventListener('submit', async (event) => {
+    event.preventDefault(); // stay on the page instead of the browser submitting the form
+
+    const changes = {
+      task: editTask.value,
+      category: editCategory.value,
+      // A datetime-local value with no time zone is read as local time,
+      // then toISOString() converts it to the UTC format we store.
+      startTime: new Date(editStart.value).toISOString(),
+      endTime: new Date(editEnd.value).toISOString()
+    };
+
+    try {
+      const res = await fetch('/api/sessions/' + encodeURIComponent(sessionBeingEdited.id), {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(changes)
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        // e.g. "endTime cannot be before startTime" — show it and keep the form open.
+        editError.textContent = data.error || 'Could not save changes.';
+        return;
+      }
+
+      // Swap the old session for the updated one from the server.
+      const updated = { ...data, startTime: new Date(data.startTime), endTime: new Date(data.endTime) };
+      sessions = sessions.map(other => other.id === updated.id ? updated : other);
+      editDialog.close();
+      renderSessions();
+    } catch (err) {
+      console.error('Could not save edit:', err);
+      editError.textContent = 'Could not reach the server — make sure it is running (node server.js).';
+    }
+  });
 
   loadSessions();
 </script>
