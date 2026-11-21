@@ -32,7 +32,12 @@ is a later stage.
 5. **Build a real `.app`**
    - `npx tauri build` produces `Productivity Tracker.app`.
    - Open it (with the server running) and confirm it works like dev mode.
-   - Confirm the existing "Could not connect to the server" message shows if the server is NOT running.
+   - ~~Confirm the "Could not connect to the server" message shows if the server is NOT running.~~
+     Turned out: the window loads the whole page from the server, so with no server it's
+     just blank white. Documented as a known limitation in tech.md.
+
+   Added along the way: a running timer now survives closing the app (active.json),
+   and alert()/confirm() were replaced with in-page pop-ups (they don't work in Tauri).
 
 6. **Update docs and save**
    - Update `tech.md` ("Running the app", "Known limitations").
