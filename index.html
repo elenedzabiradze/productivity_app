@@ -330,6 +330,43 @@
     color: var(--text);
   }
 
+  /* From/To date boxes, shown only when "Custom…" is picked. */
+  #customRange {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 14px;
+  }
+
+  #customRange[hidden] {
+    display: none;
+  }
+
+  #customRange label {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--muted);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  #customRange input {
+    padding: 6px 10px;
+    font-size: 13px;
+    font-family: inherit;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: #fbfbfc;
+    color: var(--text);
+  }
+
+  .totals-message {
+    color: var(--muted);
+    font-size: 14px;
+    margin: 0;
+  }
+
   .totals-row {
     display: flex;
     align-items: center;
@@ -391,7 +428,12 @@
       <option value="week">This Week</option>
       <option value="month">This Month</option>
       <option value="all">All Time</option>
+      <option value="custom">Custom…</option>
     </select>
+  </div>
+  <div id="customRange" hidden>
+    <label>From <input type="date" id="fromDate"></label>
+    <label>To <input type="date" id="toDate"></label>
   </div>
   <div id="totalsList"></div>
 </div>
@@ -510,24 +552,62 @@
   // (e.g. if you flip the dropdown quickly from "Today" to "All Time").
   let totalsRequestId = 0;
 
+  const customRange = document.getElementById('customRange');
+  const fromDate = document.getElementById('fromDate');
+  const toDate = document.getElementById('toDate');
+
+  // Shows a plain message in the totals card instead of the numbers.
+  function showTotalsMessage(text) {
+    totalsList.innerHTML = '';
+    const p = document.createElement('p');
+    p.className = 'totals-message';
+    p.textContent = text;
+    totalsList.appendChild(p);
+  }
+
+  // Builds the "?..." part of the /api/totals URL for the current selection.
+  // Date boxes give values like "2026-11-16", the exact format the server wants.
+  function totalsQuery() {
+    if (rangeSelect.value !== 'custom') {
+      return '?range=' + encodeURIComponent(rangeSelect.value);
+    }
+    const params = new URLSearchParams();
+    if (fromDate.value) params.set('from', fromDate.value);
+    if (toDate.value) params.set('to', toDate.value);
+    return '?' + params.toString(); // both empty = all time
+  }
+
   async function renderTotals() {
     const requestId = ++totalsRequestId;
 
-    let data;
+    // Catch a backwards range here, with a friendlier message than the server's.
+    // ("YYYY-MM-DD" text sorts in date order, so comparing strings works.)
+    if (rangeSelect.value === 'custom' && fromDate.value && toDate.value &&
+        fromDate.value > toDate.value) {
+      showTotalsMessage('The "From" date needs to be on or before the "To" date.');
+      return;
+    }
+
+    let res, data;
     try {
-      const res = await fetch('/api/totals?range=' + encodeURIComponent(rangeSelect.value));
+      res = await fetch('/api/totals' + totalsQuery());
       data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Request failed');
     } catch (err) {
       console.error('Could not load totals from the server:', err);
       if (requestId === totalsRequestId) {
-        totalsList.textContent = 'Could not load totals — make sure the server is running (node server.js).';
+        showTotalsMessage('Could not load totals — make sure the server is running (node server.js).');
       }
       return;
     }
 
     // A newer request was started while we waited — let that one draw instead.
     if (requestId !== totalsRequestId) return;
+
+    // The server is running but didn't like the request (e.g. a bad date).
+    if (!res.ok) {
+      showTotalsMessage(data.error || 'Could not load totals.');
+      return;
+    }
 
     const totals = data.totals;
     const grandTotal = data.totalMs;
@@ -545,7 +625,26 @@
     `;
   }
 
-  rangeSelect.addEventListener('change', renderTotals);
+  // Today's date as "YYYY-MM-DD" in local time, for filling the date boxes.
+  function todayInputValue() {
+    const d = new Date();
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  }
+
+  rangeSelect.addEventListener('change', () => {
+    const isCustom = rangeSelect.value === 'custom';
+    customRange.hidden = !isCustom;
+    // The first time "Custom…" is picked, start both boxes at today.
+    if (isCustom && !fromDate.value && !toDate.value) {
+      fromDate.value = todayInputValue();
+      toDate.value = todayInputValue();
+    }
+    renderTotals();
+  });
+
+  // 'change' fires once a full date has been picked or typed.
+  fromDate.addEventListener('change', renderTotals);
+  toDate.addEventListener('change', renderTotals);
 
   // Load previously saved sessions from the server when the page opens.
   async function loadSessions() {
