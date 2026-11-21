@@ -13,6 +13,8 @@
 //      and adds it to the activity log, activity.jsonl. /api/activity/today
 //      turns the log into today's time per app. After 5 minutes without
 //      keyboard/mouse input, readings are marked idle and not counted.
+//   7. Keeps a queue of "nudges" (notifications) that the desktop app collects
+//      from /api/nudges/due and shows.
 //
 // No external packages needed — just Node's built-in tools.
 //
@@ -440,6 +442,36 @@ async function takeActivityReading() {
   }
 }
 
+// --- Nudges: notifications waiting to be shown (used by /api/nudges/*) ---
+// The server decides WHAT to show and puts it in this queue; the desktop app's
+// Rust code collects the queue every 15 s and shows each item as a Mac notification.
+
+// At most this many waiting nudges. In a browser tab nothing collects them, so
+// without a limit the list would grow forever; the oldest are dropped instead.
+const MAX_QUEUED_NUDGES = 20;
+
+// A small first-in, first-out list. takeAll() hands everything out and empties
+// it, so each nudge is shown exactly once.
+function createNudgeQueue(maxSize) {
+  let items = [];
+  return {
+    add(nudge) {
+      items.push({ title: String(nudge.title), body: String(nudge.body) });
+      if (items.length > maxSize) items.shift(); // drop the oldest
+    },
+    takeAll() {
+      const out = items;
+      items = [];
+      return out;
+    },
+    size() {
+      return items.length;
+    }
+  };
+}
+
+const nudgeQueue = createNudgeQueue(MAX_QUEUED_NUDGES);
+
 // Collects a request's body and parses it as JSON. Calls onBody(data) on
 // success, or replies with a 400 error if the body isn't valid JSON.
 function readJsonBody(req, res, onBody) {
@@ -486,6 +518,21 @@ const server = http.createServer((req, res) => {
   // --- API: which app is in front right now (latest reading, or null) ---
   if (req.method === 'GET' && url.pathname === '/api/activity/current') {
     return sendJson(res, 200, latestActivity);
+  }
+
+  // --- API: nudges waiting to be shown (collected by the desktop app) ---
+  // Each nudge is handed out once: the queue is emptied by this request.
+  if (req.method === 'GET' && url.pathname === '/api/nudges/due') {
+    return sendJson(res, 200, nudgeQueue.takeAll());
+  }
+
+  // --- API: queue a test notification ("Send test notification" button) ---
+  if (req.method === 'POST' && url.pathname === '/api/nudges/test') {
+    nudgeQueue.add({
+      title: 'Test notification',
+      body: 'Nudges from Productivity Tracker are working.'
+    });
+    return sendJson(res, 200, { queued: true });
   }
 
   // --- API: today's time per app, from the activity log ---
@@ -654,5 +701,5 @@ if (require.main === module || IS_PACKAGED) {
 module.exports = {
   calculateDurationMs, totalsByCategory, resolveRange, removeSessionById, updateSession,
   validateActiveSession, parseFrontAsn, parseAppName, formatActivityLine, appendActivity,
-  parseActivityLog, timePerApp, parseIdleSeconds, isIdle
+  parseActivityLog, timePerApp, parseIdleSeconds, isIdle, createNudgeQueue
 };

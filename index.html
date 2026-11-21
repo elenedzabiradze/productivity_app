@@ -398,7 +398,17 @@
     color: white;
   }
 
-  /* Small secondary button in the Session History header. */
+  /* "Nudges" card: test button with a status message next to it. */
+  .nudge-actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-top: 14px;
+  }
+
+  /* Small secondary buttons (Session History header, Nudges card). */
+  #testNudgeBtn,
   #addPastBtn {
     padding: 6px 12px;
     font-size: 13px;
@@ -607,6 +617,17 @@
 <div class="card">
   <h2>Today by App</h2>
   <div id="appsList"></div>
+</div>
+
+<div class="card">
+  <h2>Nudges</h2>
+  <p class="totals-message">
+    Notifications appear within about 15 seconds — in the desktop app only, not in a browser tab.
+  </p>
+  <div class="nudge-actions">
+    <button type="button" id="testNudgeBtn">Send test notification</button>
+    <span id="testNudgeStatus" class="totals-message"></span>
+  </div>
 </div>
 
 <div class="card">
@@ -1308,6 +1329,25 @@
     `;
     appsList.innerHTML = html;
   }
+
+  // --- Nudges: test notification ---
+  // Asks the server to queue a test nudge; the desktop app collects it within
+  // ~15 seconds and shows it as a Mac notification.
+
+  const testNudgeBtn = document.getElementById('testNudgeBtn');
+  const testNudgeStatus = document.getElementById('testNudgeStatus');
+
+  testNudgeBtn.addEventListener('click', async () => {
+    testNudgeStatus.textContent = '';
+    try {
+      const res = await fetch('/api/nudges/test', { method: 'POST' });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      testNudgeStatus.textContent = 'Sent — watch for a notification in the next 15 seconds.';
+    } catch (err) {
+      console.error('Could not send test notification:', err);
+      testNudgeStatus.textContent = 'Could not reach the server.';
+    }
+  });
 
   loadSessions();
   restoreRunningTimer();

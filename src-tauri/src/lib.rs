@@ -5,7 +5,9 @@
 //   2. starts the bundled server program ("sidecar", built by
 //      `npm run build:server`) unless a server is already running on port 3000,
 //      telling it to keep data in the standard Mac app-data folder,
-//   3. waits for the server to answer, then switches the window to it.
+//   3. waits for the server to answer, then switches the window to it,
+//   4. every 15 s, collects any "nudges" from the server and shows each as a
+//      Mac notification (works even while the window is hidden).
 // When the app quits, it stops the server it started.
 
 use std::net::{SocketAddr, TcpStream};
@@ -13,9 +15,46 @@ use std::sync::Mutex;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use tauri::{Manager, RunEvent};
+use serde::Deserialize;
+use tauri::{AppHandle, Manager, RunEvent};
+use tauri_plugin_notification::NotificationExt;
 use tauri_plugin_shell::process::CommandChild;
 use tauri_plugin_shell::ShellExt;
+
+// Where to collect nudges, and how often.
+const NUDGES_URL: &str = "http://127.0.0.1:3000/api/nudges/due";
+const NUDGE_CHECK_INTERVAL: Duration = Duration::from_secs(15);
+
+// One nudge as the server sends it: { "title": "...", "body": "..." }
+#[derive(Deserialize)]
+struct Nudge {
+  title: String,
+  body: String,
+}
+
+// Asks the server for nudges that are due. Any problem (server not up yet,
+// bad reply) is returned as an error, and the caller simply tries again later.
+fn fetch_due_nudges() -> Result<Vec<Nudge>, Box<dyn std::error::Error>> {
+  let text = ureq::get(NUDGES_URL).call()?.body_mut().read_to_string()?;
+  Ok(serde_json::from_str(&text)?)
+}
+
+// Runs forever in the background: every 15 s, show any due nudges.
+fn watch_for_nudges(app: AppHandle) {
+  loop {
+    thread::sleep(NUDGE_CHECK_INTERVAL);
+    match fetch_due_nudges() {
+      Ok(nudges) => {
+        for nudge in nudges {
+          if let Err(err) = app.notification().builder().title(&nudge.title).body(&nudge.body).show() {
+            log::warn!("Could not show a notification: {err}");
+          }
+        }
+      }
+      Err(err) => log::debug!("No nudges collected this time: {err}"),
+    }
+  }
+}
 
 // The exact loopback address the server listens on (see HOST in server.js).
 // "localhost" could also mean the newer-style address ::1, which the server
@@ -38,6 +77,7 @@ fn server_is_up() -> bool {
 pub fn run() {
   tauri::Builder::default()
     .plugin(tauri_plugin_shell::init())
+    .plugin(tauri_plugin_notification::init())
     .setup(|app| {
       if cfg!(debug_assertions) {
         app.handle().plugin(
@@ -65,6 +105,10 @@ pub fn run() {
         Some(child)
       };
       app.manage(ServerProcess(Mutex::new(child)));
+
+      // Start collecting nudges in the background (runs until the app quits).
+      let handle = app.handle().clone();
+      thread::spawn(move || watch_for_nudges(handle));
 
       // Wait for the server in the background (so the window stays
       // responsive), then show the tracker — or an error if it never answers.
