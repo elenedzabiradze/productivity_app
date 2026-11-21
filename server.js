@@ -38,6 +38,28 @@ function writeSessions(sessions) {
   fs.writeFileSync(DATA_FILE, JSON.stringify(sessions, null, 2));
 }
 
+// --- Session duration (used by POST /api/sessions) ---
+
+// Returns how many milliseconds passed between startTime and endTime.
+// Accepts Date objects or ISO strings like "2026-11-21T10:00:00.000Z".
+// Throws an error for invalid times or an end time before the start time,
+// so a bad session never gets saved with a nonsense duration.
+function calculateDurationMs(startTime, endTime) {
+  const start = new Date(startTime);
+  const end = new Date(endTime);
+  // An unparseable date becomes "Invalid Date", whose getTime() is NaN.
+  if (startTime == null || Number.isNaN(start.getTime())) {
+    throw new Error('startTime is missing or not a valid date');
+  }
+  if (endTime == null || Number.isNaN(end.getTime())) {
+    throw new Error('endTime is missing or not a valid date');
+  }
+  if (end < start) {
+    throw new Error('endTime cannot be before startTime');
+  }
+  return end.getTime() - start.getTime();
+}
+
 // --- Category totals (used by GET /api/totals) ---
 
 const CATEGORIES = ['Work', 'Study', 'Break', 'Other'];
@@ -172,6 +194,14 @@ const server = http.createServer((req, res) => {
         return sendJson(res, 400, { error: 'Invalid JSON in request body' });
       }
 
+      // Work out the duration here from the start/end times, rather than
+      // trusting whatever number the page sent.
+      try {
+        newSession.durationMs = calculateDurationMs(newSession.startTime, newSession.endTime);
+      } catch (err) {
+        return sendJson(res, 400, { error: err.message });
+      }
+
       const sessions = readSessions();
       newSession.id = Date.now().toString();
       sessions.push(newSession);
@@ -200,6 +230,12 @@ const server = http.createServer((req, res) => {
   res.end('Not found');
 });
 
-server.listen(PORT, () => {
-  console.log(`Focus Session Tracker running at http://localhost:${PORT}`);
-});
+// Only start the server when this file is run directly (`node server.js`).
+// When a test file loads it with require(), we just hand over the functions.
+if (require.main === module) {
+  server.listen(PORT, () => {
+    console.log(`Focus Session Tracker running at http://localhost:${PORT}`);
+  });
+}
+
+module.exports = { calculateDurationMs, totalsByCategory, resolveRange };

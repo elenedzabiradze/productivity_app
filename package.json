@@ -4,6 +4,7 @@
   "description": "A local focus-session tracker with JSON file persistence.",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "test": "node --test"
   }
 }
