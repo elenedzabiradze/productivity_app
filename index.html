@@ -689,8 +689,12 @@
 
   const CATEGORIES = ['Work', 'Study', 'Break', 'Other'];
 
+  // 24-hour time, e.g. "21:05:09". hourCycle 'h23' means hours 00–23
+  // (midnight is "00:…", never "24:…").
   function formatTime(date) {
-    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    return date.toLocaleTimeString([], {
+      hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23'
+    });
   }
 
   function formatDate(date) {
