@@ -119,7 +119,11 @@
     color: white;
   }
 
-  button:disabled {
+  /* #startBtn / #stopBtn are listed by name too: their own color rules above
+     are more specific than plain button:disabled and would otherwise win. */
+  button:disabled,
+  #startBtn:disabled,
+  #stopBtn:disabled {
     background: #e5e7eb;
     color: #9ca3af;
     cursor: not-allowed;
