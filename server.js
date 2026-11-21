@@ -25,6 +25,9 @@ const IS_PACKAGED = sea.isSea();
 
 // 3000 normally; can be changed with the PORT setting (handy for testing).
 const PORT = Number(process.env.PORT) || 3000;
+// Only accept connections from this computer ("loopback"). Without this, any
+// device on the same Wi-Fi could read or change your sessions — there's no login.
+const HOST = '127.0.0.1';
 
 // Where sessions.json / active.json live. The desktop app passes its own
 // folder (~/Library/Application Support/...) in DATA_DIR; otherwise we use
@@ -430,7 +433,7 @@ if (require.main === module || IS_PACKAGED) {
     }
     throw err;
   });
-  server.listen(PORT, () => {
+  server.listen(PORT, HOST, () => {
     console.log(`Focus Session Tracker running at http://localhost:${PORT}`);
     console.log(`Data folder: ${DATA_DIR}`);
   });

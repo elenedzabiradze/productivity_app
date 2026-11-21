@@ -17,7 +17,10 @@ use tauri::{Manager, RunEvent};
 use tauri_plugin_shell::process::CommandChild;
 use tauri_plugin_shell::ShellExt;
 
-const SERVER_URL: &str = "http://localhost:3000/";
+// The exact loopback address the server listens on (see HOST in server.js).
+// "localhost" could also mean the newer-style address ::1, which the server
+// doesn't listen on, so we use the precise one.
+const SERVER_URL: &str = "http://127.0.0.1:3000/";
 
 // How long to wait for the server before showing an error.
 const STARTUP_TIMEOUT: Duration = Duration::from_secs(15);
