@@ -4,8 +4,8 @@
   "version": "0.1.0",
   "identifier": "com.productivitytracker.desktop",
   "build": {
-    "frontendDist": "http://localhost:3000",
-    "devUrl": "http://localhost:3000"
+    "frontendDist": "loading",
+    "beforeBuildCommand": "npm run build:server"
   },
   "app": {
     "windows": [
@@ -27,6 +27,7 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "externalBin": ["binaries/server"],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

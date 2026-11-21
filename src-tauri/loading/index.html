@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<!--
+  Built-in "Starting…" screen for the desktop app. It's shown the moment the
+  window opens, while the app's Rust code (src-tauri/src/lib.rs) starts the
+  server. Once the server answers, Rust switches the window to
+  http://localhost:3000. If it never answers, Rust calls showStartupError().
+-->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Productivity Tracker</title>
+<style>
+  :root {
+    --bg: #f4f5f7;
+    --text: #1f2328;
+    --muted: #6b7280;
+    --accent: #3563e9;
+    --red: #d64545;
+  }
+
+  body {
+    margin: 0;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    text-align: center;
+    padding: 0 24px;
+  }
+
+  /* Simple spinning ring */
+  .spinner {
+    width: 32px;
+    height: 32px;
+    border: 3px solid #dfe3ea;
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+
+  #message {
+    font-size: 15px;
+    color: var(--muted);
+    margin: 0;
+    max-width: 360px;
+    line-height: 1.5;
+  }
+
+  .error #message {
+    color: var(--red);
+  }
+
+  .error .spinner {
+    display: none;
+  }
+</style>
+</head>
+<body>
+  <div class="spinner"></div>
+  <p id="message">Starting Productivity Tracker…</p>
+
+  <script>
+    // Called by the app (Rust) if the server didn't start in time.
+    function showStartupError() {
+      document.body.classList.add('error');
+      document.getElementById('message').textContent =
+        'The tracker could not start its server. Please quit the app (Cmd+Q) and open it again. ' +
+        'If it keeps happening, check that nothing else is using port 3000.';
+    }
+  </script>
+</body>
+</html>
