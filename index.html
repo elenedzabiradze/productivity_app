@@ -145,6 +145,34 @@
     display: none;
   }
 
+  /* "Now: Code" — which app is in front, from automatic tracking. */
+  .now-app {
+    margin: 14px 0 0;
+    font-size: 13px;
+    color: var(--muted);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .now-app[hidden] {
+    display: none;
+  }
+
+  .now-app strong {
+    color: var(--text);
+    font-weight: 600;
+  }
+
+  /* Small green dot = tracking is live. */
+  .now-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--green);
+    flex-shrink: 0;
+  }
+
   #elapsed {
     font-family: 'SF Mono', 'Courier New', monospace;
     font-weight: 700;
@@ -509,6 +537,12 @@
   </div>
 
   <div id="status"></div>
+
+  <!-- Filled in by refreshNowApp(); hidden until there's a first reading. -->
+  <p id="nowApp" class="now-app" hidden>
+    <span class="now-dot"></span>
+    <span>Now: <strong id="nowAppName"></strong></span>
+  </p>
 </div>
 
 <div class="card">
@@ -1097,8 +1131,32 @@
     }
   });
 
+  // --- Automatic tracking: show which app is in front ---
+  // The server checks every 5 seconds (see /api/activity/current in
+  // server.js); the page asks for the latest reading on the same rhythm.
+
+  const nowApp = document.getElementById('nowApp');
+  const nowAppName = document.getElementById('nowAppName');
+
+  async function refreshNowApp() {
+    try {
+      const res = await fetch('/api/activity/current');
+      const current = await res.json();
+      if (!current) {
+        nowApp.hidden = true; // no reading yet
+        return;
+      }
+      nowAppName.textContent = current.app;
+      nowApp.hidden = false;
+    } catch (err) {
+      nowApp.hidden = true; // server unreachable — just hide the line
+    }
+  }
+
   loadSessions();
   restoreRunningTimer();
+  refreshNowApp();
+  setInterval(refreshNowApp, 5000);
 </script>
 
 </body>

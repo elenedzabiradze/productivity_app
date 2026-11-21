@@ -9,6 +9,7 @@
 //      and delete one with DELETE /api/sessions/<id>.
 //   5. Remembers a running timer in active.json (/api/active), so it can
 //      resume after the app is closed and reopened.
+//   6. Every 5 seconds, notes which app is in front (/api/activity/current).
 //
 // No external packages needed — just Node's built-in tools.
 //
@@ -18,6 +19,7 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const { execFile } = require('child_process');
 // Tells us whether we're running as the packaged single-file program that the
 // desktop app starts (see sea-config.json), or as plain `node server.js`.
 const sea = require('node:sea');
@@ -247,6 +249,68 @@ function validateActiveSession(input) {
   return { task, category: data.category, startTime: start.toISOString() };
 }
 
+// --- Automatic tracking: which app is in front (used by /api/activity/*) ---
+
+const ACTIVITY_INTERVAL_MS = 5000; // check every 5 seconds
+// Full path: apps opened from the Dock get a very short PATH, so don't rely on it.
+const LSAPPINFO = '/usr/bin/lsappinfo';
+
+// `lsappinfo front` prints an ID for the frontmost app, like "ASN:0x0-0x212212:".
+// Returns that ID, or null if the output doesn't look like one (empty, error text…).
+function parseFrontAsn(output) {
+  if (typeof output !== 'string') return null;
+  const asn = output.trim();
+  return /^ASN:\S+$/.test(asn) ? asn : null;
+}
+
+// `lsappinfo info -only name <ASN>` prints:  "LSDisplayName"="Code"
+// Returns the app name ("Code"), or null if there isn't one.
+function parseAppName(output) {
+  if (typeof output !== 'string') return null;
+  const match = /"LSDisplayName"="([^"]*)"/.exec(output);
+  if (!match) return null;
+  const name = match[1].trim();
+  return name || null;
+}
+
+// Runs a command and resolves to its output, or null if it fails or takes
+// longer than 2 seconds. Never throws — a failed reading is just skipped.
+function runQuietly(file, args) {
+  return new Promise(resolve => {
+    execFile(file, args, { timeout: 2000 }, (err, stdout) => {
+      resolve(err ? null : stdout);
+    });
+  });
+}
+
+// Asks macOS which app is in front. Resolves to its name, or null if any
+// part of the reading failed.
+async function readFrontmostApp() {
+  const asn = parseFrontAsn(await runQuietly(LSAPPINFO, ['front']));
+  if (!asn) return null;
+  return parseAppName(await runQuietly(LSAPPINFO, ['info', '-only', 'name', asn]));
+}
+
+// The most recent successful reading: { t: ISO time, app: name }, or null.
+let latestActivity = null;
+let readingInProgress = false;
+
+async function takeActivityReading() {
+  if (readingInProgress) return; // previous check still running — skip this one
+  readingInProgress = true;
+  try {
+    const app = await readFrontmostApp();
+    // A failed/empty reading is skipped: keep the last good one, log nothing.
+    if (app) {
+      latestActivity = { t: new Date().toISOString(), app };
+    }
+  } catch (err) {
+    console.error('Activity reading failed:', err.message);
+  } finally {
+    readingInProgress = false;
+  }
+}
+
 // Collects a request's body and parses it as JSON. Calls onBody(data) on
 // success, or replies with a 400 error if the body isn't valid JSON.
 function readJsonBody(req, res, onBody) {
@@ -288,6 +352,11 @@ const server = http.createServer((req, res) => {
       totals,
       totalMs
     });
+  }
+
+  // --- API: which app is in front right now (latest reading, or null) ---
+  if (req.method === 'GET' && url.pathname === '/api/activity/current') {
+    return sendJson(res, 200, latestActivity);
   }
 
   // --- API: the running timer (so it survives closing the app) ---
@@ -436,10 +505,14 @@ if (require.main === module || IS_PACKAGED) {
   server.listen(PORT, HOST, () => {
     console.log(`Focus Session Tracker running at http://localhost:${PORT}`);
     console.log(`Data folder: ${DATA_DIR}`);
+
+    // Start automatic tracking: one reading now, then every 5 seconds.
+    takeActivityReading();
+    setInterval(takeActivityReading, ACTIVITY_INTERVAL_MS);
   });
 }
 
 module.exports = {
   calculateDurationMs, totalsByCategory, resolveRange, removeSessionById, updateSession,
-  validateActiveSession
+  validateActiveSession, parseFrontAsn, parseAppName
 };
