@@ -7,6 +7,8 @@
 //   3. Provides /api/totals, which adds up time per category for a date range.
 //   4. Lets you edit a session with PUT /api/sessions/<id>
 //      and delete one with DELETE /api/sessions/<id>.
+//   5. Remembers a running timer in active.json (/api/active), so it can
+//      resume after the app is closed and reopened.
 //
 // No external packages needed — just Node's built-in tools.
 //
@@ -20,6 +22,9 @@ const path = require('path');
 const PORT = 3000;
 const DATA_FILE = path.join(__dirname, 'sessions.json');
 const INDEX_FILE = path.join(__dirname, 'index.html');
+// Holds the session whose timer is running right now (if any), so it
+// survives closing the app. Deleted again when the session is stopped.
+const ACTIVE_FILE = path.join(__dirname, 'active.json');
 
 // Make sure sessions.json exists before we start, so reads never fail.
 if (!fs.existsSync(DATA_FILE)) {
@@ -189,6 +194,60 @@ function totalsByCategory(sessions, from, to) {
   return { totals, totalMs };
 }
 
+// --- Running timer (used by /api/active) ---
+
+// Returns the running session saved in active.json, or null if none.
+function readActive() {
+  if (!fs.existsSync(ACTIVE_FILE)) return null;
+  try {
+    return JSON.parse(fs.readFileSync(ACTIVE_FILE, 'utf8'));
+  } catch (err) {
+    return null; // corrupted file — treat as "nothing running"
+  }
+}
+
+function writeActive(active) {
+  fs.writeFileSync(ACTIVE_FILE, JSON.stringify(active, null, 2));
+}
+
+function clearActive() {
+  if (fs.existsSync(ACTIVE_FILE)) fs.unlinkSync(ACTIVE_FILE);
+}
+
+// Checks a just-started session ({ task, category, startTime }) and returns a
+// clean copy to save. Throws an error with a readable message if invalid.
+function validateActiveSession(input) {
+  const data = input || {};
+  const task = typeof data.task === 'string' ? data.task.trim() : '';
+  if (!task) {
+    throw new Error('Task cannot be empty');
+  }
+  if (!CATEGORIES.includes(data.category)) {
+    throw new Error('Category must be one of: ' + CATEGORIES.join(', '));
+  }
+  const start = new Date(data.startTime);
+  if (data.startTime == null || Number.isNaN(start.getTime())) {
+    throw new Error('startTime is missing or not a valid date');
+  }
+  return { task, category: data.category, startTime: start.toISOString() };
+}
+
+// Collects a request's body and parses it as JSON. Calls onBody(data) on
+// success, or replies with a 400 error if the body isn't valid JSON.
+function readJsonBody(req, res, onBody) {
+  let body = '';
+  req.on('data', chunk => { body += chunk; });
+  req.on('end', () => {
+    let data;
+    try {
+      data = JSON.parse(body);
+    } catch (err) {
+      return sendJson(res, 400, { error: 'Invalid JSON in request body' });
+    }
+    onBody(data);
+  });
+}
+
 function sendJson(res, statusCode, data) {
   const body = JSON.stringify(data);
   res.writeHead(statusCode, {
@@ -214,6 +273,33 @@ const server = http.createServer((req, res) => {
       totals,
       totalMs
     });
+  }
+
+  // --- API: the running timer (so it survives closing the app) ---
+  if (url.pathname === '/api/active') {
+    // Is a session running? Replies with it, or null.
+    if (req.method === 'GET') {
+      return sendJson(res, 200, readActive());
+    }
+    // A session was just started — remember it.
+    if (req.method === 'PUT') {
+      readJsonBody(req, res, data => {
+        let active;
+        try {
+          active = validateActiveSession(data);
+        } catch (err) {
+          return sendJson(res, 400, { error: err.message });
+        }
+        writeActive(active);
+        sendJson(res, 200, active);
+      });
+      return;
+    }
+    // The session was stopped — forget it.
+    if (req.method === 'DELETE') {
+      clearActive();
+      return sendJson(res, 200, { cleared: true });
+    }
   }
 
   // --- API: list all saved sessions ---
@@ -319,4 +405,7 @@ if (require.main === module) {
   });
 }
 
-module.exports = { calculateDurationMs, totalsByCategory, resolveRange, removeSessionById, updateSession };
+module.exports = {
+  calculateDurationMs, totalsByCategory, resolveRange, removeSessionById, updateSession,
+  validateActiveSession
+};

@@ -2,7 +2,7 @@
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Productivity Tracker",
   "version": "0.1.0",
-  "identifier": "com.productivitytracker.app",
+  "identifier": "com.productivitytracker.desktop",
   "build": {
     "frontendDist": "http://localhost:3000",
     "devUrl": "http://localhost:3000"

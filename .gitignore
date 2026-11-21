@@ -6,3 +6,6 @@ node_modules/
 
 # macOS Finder folder settings — not part of the project.
 .DS_Store
+
+# The currently running timer — personal data, like sessions.json.
+active.json

@@ -813,7 +813,51 @@
     return showDialog(text, { withCancel: true, okLabel, danger: true });
   }
 
-  startBtn.addEventListener('click', () => {
+  // Switches the page into "timer running" mode for currentSession: shows the
+  // status line, locks the inputs, and ticks the elapsed time every second.
+  // Used both by the Start button and when resuming a timer on page load.
+  function showRunningTimer() {
+    const elapsedNow = formatElapsed(new Date() - currentSession.startTime);
+    statusEl.innerHTML = `Working on "${currentSession.task}" [${currentSession.category}] — started at ${formatTime(currentSession.startTime)} &nbsp; <span id="elapsed">${elapsedNow}</span>`;
+
+    taskInput.value = currentSession.task;
+    categorySelect.value = currentSession.category;
+    taskInput.disabled = true;
+    categorySelect.disabled = true;
+    startBtn.disabled = true;
+    stopBtn.disabled = false;
+
+    timerInterval = setInterval(() => {
+      const elapsedEl = document.getElementById('elapsed');
+      if (elapsedEl && currentSession) {
+        elapsedEl.textContent = formatElapsed(new Date() - currentSession.startTime);
+      }
+    }, 1000);
+  }
+
+  // The in-progress "a timer is running" request to the server (see Start).
+  let activeSaveRequest = null;
+
+  // When the page opens, ask the server whether a timer was left running
+  // (e.g. the app was closed mid-session). If so, carry on counting from the
+  // original start time.
+  async function restoreRunningTimer() {
+    try {
+      const res = await fetch('/api/active');
+      const active = await res.json();
+      if (!active) return; // nothing was running
+      currentSession = {
+        task: active.task,
+        category: active.category,
+        startTime: new Date(active.startTime)
+      };
+      showRunningTimer();
+    } catch (err) {
+      console.error('Could not check for a running timer:', err);
+    }
+  }
+
+  startBtn.addEventListener('click', async () => {
     const task = taskInput.value.trim();
     if (!task) {
       showMessage('Please enter what you\'re working on first.');
@@ -825,21 +869,16 @@
       category: categorySelect.value,
       startTime: new Date()
     };
+    showRunningTimer();
 
-    statusEl.innerHTML = `Working on "${task}" [${currentSession.category}] — started at ${formatTime(currentSession.startTime)} &nbsp; <span id="elapsed">00:00:00</span>`;
-
-    taskInput.disabled = true;
-    categorySelect.disabled = true;
-    startBtn.disabled = true;
-    stopBtn.disabled = false;
-
-    // Update the elapsed-time display every second while this session runs.
-    timerInterval = setInterval(() => {
-      const elapsedEl = document.getElementById('elapsed');
-      if (elapsedEl && currentSession) {
-        elapsedEl.textContent = formatElapsed(new Date() - currentSession.startTime);
-      }
-    }, 1000);
+    // Tell the server a session is running, so it survives closing the app.
+    // If this fails the timer still works — it just won't resume after closing.
+    // (Kept in a variable so Stop can wait for it — see below.)
+    activeSaveRequest = fetch('/api/active', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(currentSession)
+    }).catch(err => console.error('Could not save the running timer:', err));
   });
 
   stopBtn.addEventListener('click', async () => {
@@ -861,6 +900,7 @@
 
     // Save it to sessions.json via the server, so it's still there next time
     // the app is opened.
+    let reachedServer = false;
     try {
       const res = await fetch('/api/sessions', {
         method: 'POST',
@@ -868,6 +908,7 @@
         body: JSON.stringify(newSession)
       });
       const saved = await res.json();
+      reachedServer = true;
       if (!res.ok) {
         // The server is running but refused the session (e.g. end before
         // start). Don't add it to the list — `saved` is an error, not a session.
@@ -884,6 +925,22 @@
       showMessage('Could not save this session — the server might not be running. ' +
             'It will show up for now, but will be lost on refresh.');
       sessions.push(newSession);
+    }
+
+    // The timer is no longer running, so tell the server to forget it.
+    // (Only if the server answered above: if it was unreachable, keeping the
+    // running timer on record means it will resume on the next open instead
+    // of being lost.)
+    if (reachedServer) {
+      try {
+        // If Stop was pressed right after Start, make sure the "a timer is
+        // running" message has arrived first — otherwise it could land after
+        // this one and bring a stopped timer back next time.
+        await activeSaveRequest;
+        await fetch('/api/active', { method: 'DELETE' });
+      } catch (err) {
+        console.error('Could not clear the running timer:', err);
+      }
     }
 
     renderSessions();
@@ -1037,6 +1094,7 @@
   });
 
   loadSessions();
+  restoreRunningTimer();
 </script>
 
 </body>
