@@ -307,7 +307,7 @@
   .badge-work { background: #e6edff; color: var(--accent-dark); }
   .badge-study { background: #fef3d6; color: #9a6b00; }
   .badge-break { background: #e3f6e9; color: #1f7a45; }
-  .badge-other { background: #ececee; color: #52525b; }
+  .badge-other { background: #f1eafb; color: #6b3fa8; }
 
   .totals-header {
     display: flex;
@@ -390,6 +390,56 @@
     font-family: 'SF Mono', 'Courier New', monospace;
     font-size: 13px;
     color: var(--text);
+  }
+
+  /* --- Bar chart inside each totals row --- */
+
+  /* Fixed-width label column so all the bars start at the same place. */
+  .totals-label {
+    width: 64px;
+    flex-shrink: 0;
+  }
+
+  /* The light gray "track" each bar sits in (= 100% of the total). */
+  .bar-track {
+    flex: 1;
+    height: 8px;
+    margin: 0 14px;
+    background: #f0f1f3;
+    border-radius: 4px;
+    overflow: hidden;
+  }
+
+  .bar-fill {
+    height: 100%;
+    border-radius: 4px;
+    transition: width 0.3s ease;
+  }
+
+  /* Bar colors per category (checked for color-blind readability). */
+  .bar-work  { background: #3563e9; }
+  .bar-study { background: #d9a21b; }
+  .bar-break { background: #1f9d55; }
+  .bar-other { background: #9b6bd3; }
+
+  .totals-value {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+
+  /* Fixed width so every bar track is the same length, whatever the time text. */
+  .totals-value .totals-duration {
+    min-width: 90px;
+    text-align: right;
+  }
+
+  .totals-percent {
+    width: 34px;
+    text-align: right;
+    font-size: 12px;
+    color: var(--muted);
   }
 
   #emptyMsg {
@@ -612,15 +662,30 @@
     const totals = data.totals;
     const grandTotal = data.totalMs;
 
-    totalsList.innerHTML = CATEGORIES.map(c => `
-      <div class="totals-row">
-        ${categoryBadge(c)}
-        <span class="totals-duration">${formatDuration(totals[c])}</span>
-      </div>
-    `).join('') + `
+    totalsList.innerHTML = CATEGORIES.map(c => {
+      // Each bar's length is that category's share of the total time.
+      // (If nothing was logged in this range, every bar is empty.)
+      const percent = grandTotal > 0 ? Math.round((totals[c] / grandTotal) * 100) : 0;
+      const tooltip = `${c}: ${formatDuration(totals[c])} (${percent}% of total)`;
+      return `
+        <div class="totals-row">
+          <span class="totals-label">${categoryBadge(c)}</span>
+          <div class="bar-track" title="${tooltip}">
+            <div class="bar-fill bar-${c.toLowerCase()}" style="width: ${percent}%"></div>
+          </div>
+          <span class="totals-value">
+            <span class="totals-duration">${formatDuration(totals[c])}</span>
+            <span class="totals-percent">${percent}%</span>
+          </span>
+        </div>
+      `;
+    }).join('') + `
       <div class="totals-row totals-total">
         <span>Total</span>
-        <span class="totals-duration">${formatDuration(grandTotal)}</span>
+        <span class="totals-value">
+          <span class="totals-duration">${formatDuration(grandTotal)}</span>
+          <span class="totals-percent"></span>
+        </span>
       </div>
     `;
   }
