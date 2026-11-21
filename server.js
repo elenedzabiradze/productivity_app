@@ -15,6 +15,7 @@
 //      keyboard/mouse input, readings are marked idle and not counted.
 //   7. Keeps a queue of "nudges" (notifications) that the desktop app collects
 //      from /api/nudges/due and shows. Nudge settings: /api/settings.
+//      Every 5 s it checks whether a break or idle nudge is due.
 //
 // No external packages needed — just Node's built-in tools.
 //
@@ -412,6 +413,86 @@ function timePerApp(readings, from, to) {
   return { apps, totalMs };
 }
 
+// --- Nudge rules: when is a break or idle nudge due? ---
+
+// Active work time between `start` and `now`, from activity readings: each
+// reading counts until the next one (or until `now` for the latest), capped at
+// 10 s; idle readings count 0. Unlike "Today by App", this app's own readings
+// DO count — looking at the tracker is still working.
+function activeWorkMs(readings, start, now) {
+  const inSession = readings
+    .filter(r => r.t >= start && r.t <= now)
+    .sort((a, b) => a.t - b.t);
+  let total = 0;
+  inSession.forEach((reading, i) => {
+    if (reading.idle === true) return;
+    const until = i + 1 < inSession.length ? inSession[i + 1].t : now;
+    total += Math.min(Math.max(until - reading.t, 0), MAX_READING_MS);
+  });
+  return total;
+}
+
+// What the nudge checker remembers between checks (the "cooldown" memory).
+function initialNudgeState() {
+  return {
+    sessionKey: null,    // start time of the session these memories belong to
+    breakBlocksSent: 0,  // how many work blocks have already had a break nudge
+    idleNudged: false    // already nudged during the current idle stretch?
+  };
+}
+
+// Decides which nudges to send now. Pure: no files, no clock, no side effects.
+//   state:  what was remembered from the last check (see initialNudgeState)
+//   input:  { active, settings, activeMs, idleSeconds }
+//     active      — the running session { task, startTime }, or null
+//     settings    — { workMinutes, idleEnabled, idleMinutes }
+//     activeMs    — active work time in this session so far
+//     idleSeconds — seconds since the last keyboard/mouse input, or null if unknown
+// Returns { state, nudges } — the new memory, and a list of { title, body }.
+function evaluateNudges(state, input) {
+  const { active, settings, activeMs, idleSeconds } = input;
+  const nudges = [];
+
+  // No session running → no nudges, and forget everything.
+  if (!active) return { state: initialNudgeState(), nudges };
+
+  // A different session than last time → start its memory fresh.
+  let next = { ...state };
+  if (next.sessionKey !== active.startTime) {
+    next = { ...initialNudgeState(), sessionKey: active.startTime };
+  }
+
+  // Break nudge: once per completed block of active work.
+  if (settings.workMinutes !== 'off') {
+    const blockMs = settings.workMinutes * 60 * 1000;
+    const blocksDone = Math.floor(activeMs / blockMs);
+    if (blocksDone > next.breakBlocksSent) {
+      // Even if several blocks were missed (e.g. after a restart), send one.
+      const minutes = blocksDone * settings.workMinutes;
+      nudges.push({
+        title: 'Time for a break',
+        body: `You've worked ${minutes} minutes on "${active.task}". Stand up, stretch, rest your eyes.`
+      });
+      next.breakBlocksSent = blocksDone;
+    }
+  }
+
+  // Idle nudge: once per idle stretch; an unknown idle time counts as active.
+  const idleLongEnough = typeof idleSeconds === 'number' &&
+    idleSeconds >= settings.idleMinutes * 60;
+  if (!idleLongEnough) {
+    next.idleNudged = false; // there was input (or we can't tell) → reset
+  } else if (settings.idleEnabled && !next.idleNudged) {
+    nudges.push({
+      title: 'Still working?',
+      body: `No activity for ${settings.idleMinutes} minutes — still on "${active.task}"? Stop the timer if you're done.`
+    });
+    next.idleNudged = true;
+  }
+
+  return { state: next, nudges };
+}
+
 // Reads the whole activity log from disk (empty list if there isn't one yet).
 function readActivityLog() {
   try {
@@ -425,6 +506,41 @@ function readActivityLog() {
 let latestActivity = null;
 let readingInProgress = false;
 
+// Readings since the running session started, kept in memory so the nudge
+// check doesn't re-read the whole log every 5 seconds. Each: { t: Date, app, idle? }
+let sessionReadings = [];
+let nudgeState = initialNudgeState();
+
+// When the server starts with a session already running (e.g. after the app
+// was reopened), load that session's readings from the log once.
+function loadSessionReadings() {
+  const active = readActive();
+  if (!active) return;
+  const start = new Date(active.startTime);
+  sessionReadings = readActivityLog().filter(r => r.t >= start);
+}
+
+// Runs every 5 s after the activity reading: works out the inputs, asks
+// evaluateNudges what to send, and puts any nudges in the queue.
+function checkNudges(idleSeconds) {
+  const active = readActive();
+  if (active) {
+    // Forget readings from before this session started.
+    const start = new Date(active.startTime);
+    sessionReadings = sessionReadings.filter(r => r.t >= start);
+  } else {
+    sessionReadings = [];
+  }
+  const activeMs = active
+    ? activeWorkMs(sessionReadings, new Date(active.startTime), new Date())
+    : 0;
+  const result = evaluateNudges(nudgeState, {
+    active, settings: readSettings(), activeMs, idleSeconds
+  });
+  nudgeState = result.state;
+  result.nudges.forEach(n => nudgeQueue.add(n));
+}
+
 async function takeActivityReading() {
   if (readingInProgress) return; // previous check still running — skip this one
   readingInProgress = true;
@@ -436,7 +552,10 @@ async function takeActivityReading() {
       latestActivity = { t: new Date().toISOString(), app };
       if (isIdle(idleSeconds)) latestActivity.idle = true;
       appendActivity(ACTIVITY_FILE, latestActivity);
+      sessionReadings.push({ ...latestActivity, t: new Date(latestActivity.t) });
     }
+    // Then: is a break or idle nudge due? (Also runs if the app reading failed.)
+    checkNudges(idleSeconds);
   } catch (err) {
     console.error('Activity reading failed:', err.message);
   } finally {
@@ -777,6 +896,8 @@ if (require.main === module || IS_PACKAGED) {
     console.log(`Data folder: ${DATA_DIR}`);
 
     // Start automatic tracking: one reading now, then every 5 seconds.
+    // (First, pick up the readings of a session that was already running.)
+    loadSessionReadings();
     takeActivityReading();
     setInterval(takeActivityReading, ACTIVITY_INTERVAL_MS);
   });
@@ -786,5 +907,6 @@ module.exports = {
   calculateDurationMs, totalsByCategory, resolveRange, removeSessionById, updateSession,
   validateActiveSession, parseFrontAsn, parseAppName, formatActivityLine, appendActivity,
   parseActivityLog, timePerApp, parseIdleSeconds, isIdle, createNudgeQueue,
-  DEFAULT_SETTINGS, normalizeSettings, applySettingsChange
+  DEFAULT_SETTINGS, normalizeSettings, applySettingsChange,
+  activeWorkMs, initialNudgeState, evaluateNudges
 };
