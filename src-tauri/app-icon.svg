@@ -1,0 +1,30 @@
+<!--
+  Source image for the app icon: a white stopwatch on the app's blue.
+  To regenerate every icon size from it:  npx tauri icon src-tauri/app-icon.svg
+  (The 100px transparent margin matches the standard macOS icon shape.)
+-->
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#4a76f0"/>
+      <stop offset="1" stop-color="#2748b3"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Rounded-square background -->
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#bg)"/>
+
+  <!-- Stopwatch button on top -->
+  <rect x="467" y="228" width="90" height="58" rx="18" fill="#ffffff"/>
+  <rect x="495" y="276" width="34" height="40" fill="#ffffff"/>
+
+  <!-- Quarter of the dial filled in: "time spent" -->
+  <path d="M512 572 L512 382 A190 190 0 0 1 702 572 Z" fill="#ffffff" fill-opacity="0.35"/>
+
+  <!-- Stopwatch body -->
+  <circle cx="512" cy="572" r="232" fill="none" stroke="#ffffff" stroke-width="56"/>
+
+  <!-- Hand and centre dot -->
+  <line x1="512" y1="572" x2="512" y2="420" stroke="#ffffff" stroke-width="44" stroke-linecap="round"/>
+  <circle cx="512" cy="572" r="34" fill="#ffffff"/>
+</svg>

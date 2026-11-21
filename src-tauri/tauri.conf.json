@@ -11,8 +11,11 @@
     "windows": [
       {
         "title": "Productivity Tracker",
-        "width": 800,
-        "height": 600,
+        "width": 760,
+        "height": 900,
+        "minWidth": 480,
+        "minHeight": 600,
+        "center": true,
         "resizable": true,
         "fullscreen": false
       }
