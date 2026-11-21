@@ -367,51 +367,36 @@
     return parts.join(' ');
   }
 
-  // --- Date-range helpers for the totals-by-category card ---
+  // --- Totals-by-category card ---
+  // The server does the adding up (GET /api/totals, see server.js), including
+  // the date rules like "this week starts on Monday". The page just asks for
+  // the selected range and draws whatever comes back.
 
-  function startOfToday() {
-    const d = new Date();
-    d.setHours(0, 0, 0, 0);
-    return d;
-  }
+  // Counts requests so a slow, outdated reply can't overwrite a newer one
+  // (e.g. if you flip the dropdown quickly from "Today" to "All Time").
+  let totalsRequestId = 0;
 
-  function startOfWeek() {
-    // Treats Monday as the first day of the week.
-    const d = startOfToday();
-    const day = d.getDay(); // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
-    const diffToMonday = (day === 0) ? 6 : day - 1;
-    d.setDate(d.getDate() - diffToMonday);
-    return d;
-  }
+  async function renderTotals() {
+    const requestId = ++totalsRequestId;
 
-  function startOfMonth() {
-    const d = startOfToday();
-    d.setDate(1);
-    return d;
-  }
-
-  function rangeStartFor(rangeValue) {
-    if (rangeValue === 'today') return startOfToday();
-    if (rangeValue === 'week') return startOfWeek();
-    if (rangeValue === 'month') return startOfMonth();
-    return null; // 'all' — no lower bound
-  }
-
-  // Recomputes and redraws the per-category totals for whatever range
-  // is currently selected in the dropdown.
-  function renderTotals() {
-    const rangeStart = rangeStartFor(rangeSelect.value);
-
-    const totals = {};
-    CATEGORIES.forEach(c => { totals[c] = 0; });
-
-    let grandTotal = 0;
-    sessions.forEach(s => {
-      if (!rangeStart || s.startTime >= rangeStart) {
-        totals[s.category] = (totals[s.category] || 0) + s.durationMs;
-        grandTotal += s.durationMs;
+    let data;
+    try {
+      const res = await fetch('/api/totals?range=' + encodeURIComponent(rangeSelect.value));
+      data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Request failed');
+    } catch (err) {
+      console.error('Could not load totals from the server:', err);
+      if (requestId === totalsRequestId) {
+        totalsList.textContent = 'Could not load totals — make sure the server is running (node server.js).';
       }
-    });
+      return;
+    }
+
+    // A newer request was started while we waited — let that one draw instead.
+    if (requestId !== totalsRequestId) return;
+
+    const totals = data.totals;
+    const grandTotal = data.totalMs;
 
     totalsList.innerHTML = CATEGORIES.map(c => `
       <div class="totals-row">
