@@ -72,7 +72,7 @@ Server settings (environment variables, both optional):
 - The browser's alert()/confirm() don't work in the Tauri window — use the page's own
   showMessage() / askToConfirm() pop-ups instead
 
-## Week 4: automatic tracking (planned)
+## Week 4: automatic tracking (done)
 
 ### Reading the frontmost app
 - Done by the server (server.js), not the Rust code, so it works the same in the desktop
@@ -122,6 +122,67 @@ Server settings (environment variables, both optional):
 - Broken lines in the log, or lines without an app name, are skipped.
 - "Today" = since local midnight, the same rule as the category totals.
 
-### API (planned)
+### API
 - GET /api/activity/current   latest reading: { t, app, idle } (or null)
 - GET /api/activity/today     time per app today: [{ app, ms }], largest first
+
+## Week 5: focus nudges (planned)
+
+### Who does what
+- **Server (server.js) decides WHEN** a nudge is due. It already knows the running session
+  (active.json) and, every 5 s, the frontmost app and idle state. The decisions are pure
+  functions, unit-tested with `node --test`.
+- **The Rust side (src-tauri/src/lib.rs) SHOWS** the notification. A background thread asks the
+  server every 15 s (GET /api/nudges/due) and shows whatever comes back, using Tauri's
+  official notification plugin (tauri-plugin-notification, version 2).
+- Why not the page? Its JavaScript can be slowed down or paused by macOS while the window is
+  hidden — exactly when nudges matter. The Rust thread and the server keep running regardless.
+- Why not the server alone (e.g. `osascript`)? Notifications would then appear as coming from
+  "Script Editor", not from Productivity Tracker.
+- HTTP from Rust: the small `ureq` crate (a simple HTTP client).
+
+### Break nudge: counting active work time
+- Work time = active time since the running session started, worked out from the Week 4
+  activity readings the same way as "Today by App": each reading counts until the next one,
+  capped at 10 s; **idle readings count 0**. Unlike "Today by App", readings of Productivity
+  Tracker itself DO count here (looking at the tracker is still working).
+- Gaps (Mac asleep, app closed) don't count, because of the 10 s cap.
+- Kept as a running total in memory, rebuilt from activity.jsonl when the server starts
+  (so a resumed session keeps its progress).
+- Nudge at k × workMinutes of active time (k = 1, 2, 3 …), once per k.
+- Known gap (from Week 4): the first 5 minutes away still count as active, because idle is
+  only detected after 5 minutes without input.
+- If automatic tracking can't take readings (e.g. `lsappinfo` fails), no active time is
+  counted and the break nudge doesn't fire.
+
+### Idle nudge
+- Session running AND idle ≥ idleMinutes (from the 5-second idle check) → one nudge.
+- A failed idle check counts as active, so it never triggers the nudge.
+
+### Cooldown rules (the same for every nudge)
+- A nudge is sent once per trigger, then waits until its condition resets:
+  - break: once per completed work block (per k); next only after another full workMinutes
+    of active time,
+  - idle: once per idle stretch; can fire again only after input in between.
+- Stopping or starting a session resets both.
+- "Already sent" is remembered in memory; if the server restarts mid-session, at most one
+  nudge may be repeated — acceptable.
+
+### Settings
+- settings.json in DATA_DIR, e.g.
+  {"workMinutes":25,"idleEnabled":true,"idleMinutes":10}
+- workMinutes: 25, 50, or "off" (default 25). idleMinutes: whole minutes 1–240 (default 10).
+- Missing or broken file → defaults; invalid values are rejected by PUT /api/settings.
+- Ignored by Git in the project folder, like the other data files.
+
+### macOS permissions
+- Notifications: macOS may ask once to allow notifications from Productivity Tracker; it can
+  be changed later in System Settings → Notifications. To be confirmed in step 1, since the
+  app is not signed by a registered Apple developer.
+- No other permissions (idle time and app names already need none).
+
+### API (planned)
+- GET  /api/nudges/due     nudges to show now: [{ title, body }] (each returned once)
+- POST /api/nudges/test    queue a test notification (to check notifications work)
+- GET  /api/settings       nudge settings
+- PUT  /api/settings       change nudge settings (validated)

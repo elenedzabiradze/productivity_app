@@ -10,6 +10,7 @@
   - Shown as a bar per category with its share of the total
 - Edit a past session (task, category, start and end time; duration recalculated)
 - Delete a past session (with confirmation)
+- Add a past session afterwards (e.g. reading a book away from the computer)
 - A running timer survives closing the app: reopening resumes it from the original start time
 - Runs as a standalone native macOS desktop app (Tauri) — just double-click; it starts
   and stops its own server — as well as in a browser tab
@@ -18,7 +19,7 @@
 - No cloud sync, no multi-device support
 - No database yet (JSON file is fine for now)
 
-## Week 4: automatic tracking (planned)
+## Week 4: automatic tracking (done)
 Alongside manual sessions, the app notices which application you're using — without
 you pressing anything.
 
@@ -41,3 +42,32 @@ Out of scope for Week 4:
 - Window titles / website names (would need extra macOS permissions)
 - Linking app time to categories or sessions
 - Deleting or trimming old activity data
+
+## Week 5: focus nudges (planned)
+Gentle Mac notifications ("nudges") while a session timer is running.
+
+- **Break nudge (Pomodoro style)**: after each block of work, "Time for a break —
+  25 minutes on 'Write report'." Work length is a setting: **25 minutes** (default),
+  **50 minutes**, or **off**.
+  - Only *active* time counts toward the work length: time marked idle (no keyboard or mouse
+    input for 5+ minutes, see Week 4) does not. Walk away for 20 minutes and the work block
+    simply pauses.
+- **Idle nudge**: a session timer is running but there has been no keyboard or mouse input
+  for 10 minutes — "Still working on 'Write report'? Stop the timer if you're done."
+  The minutes and on/off are settings.
+- **Same cooldown rules for every nudge**: each nudge is sent once per trigger, then waits
+  until its condition resets —
+  - break nudge: once per completed work block; the next one only after another full work
+    length of active time,
+  - idle nudge: once per idle stretch; again only after there has been input in between.
+  Stopping or starting a session resets both.
+- A small **Nudges** section in the app to change these settings
+- Nudges appear even when the tracker window is hidden or behind other windows
+- The first time, macOS may ask whether "Productivity Tracker" may show notifications
+- Nudges only appear in the desktop app (not when using the tracker in a browser tab)
+
+Out of scope for Week 5:
+- Nudges based on automatic tracking alone (no session running)
+- Clicking a notification to stop the timer or open a specific part of the app
+- Sounds / custom notification styles
+- Menu bar timer (listed under "Later" in steps-week5.md)
