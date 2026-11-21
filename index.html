@@ -196,6 +196,11 @@
     flex-shrink: 0;
   }
 
+  /* Gray dot while idle (no keyboard/mouse input for 5+ minutes). */
+  .now-app.is-idle .now-dot {
+    background: #9ca3af;
+  }
+
   #elapsed {
     font-family: 'SF Mono', 'Courier New', monospace;
     font-weight: 700;
@@ -1174,7 +1179,9 @@
         nowApp.hidden = true; // no reading yet
         return;
       }
-      nowAppName.textContent = current.app;
+      // While idle (no input for 5+ minutes), show "idle" instead of the app.
+      nowAppName.textContent = current.idle ? 'idle' : current.app;
+      nowApp.classList.toggle('is-idle', current.idle === true);
       nowApp.hidden = false;
     } catch (err) {
       nowApp.hidden = true; // server unreachable — just hide the line

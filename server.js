@@ -11,7 +11,8 @@
 //      resume after the app is closed and reopened.
 //   6. Every 5 seconds, notes which app is in front (/api/activity/current)
 //      and adds it to the activity log, activity.jsonl. /api/activity/today
-//      turns the log into today's time per app.
+//      turns the log into today's time per app. After 5 minutes without
+//      keyboard/mouse input, readings are marked idle and not counted.
 //
 // No external packages needed — just Node's built-in tools.
 //
@@ -277,6 +278,29 @@ function parseAppName(output) {
   return name || null;
 }
 
+// --- Idle detection ---
+
+// No keyboard/mouse input for this long → readings are marked idle and not counted.
+const IDLE_THRESHOLD_SECONDS = 5 * 60;
+const IOREG = '/usr/sbin/ioreg';
+
+// `ioreg -c IOHIDSystem` output contains a line like:
+//     "HIDIdleTime" = 938416
+// which is the time since the last keyboard/mouse input, in nanoseconds.
+// Returns that time in seconds, or null if it can't be found.
+function parseIdleSeconds(output) {
+  if (typeof output !== 'string') return null;
+  const match = /"HIDIdleTime"\s*=\s*(\d+)/.exec(output);
+  if (!match) return null;
+  return Number(match[1]) / 1e9; // nanoseconds → seconds
+}
+
+// True only if we KNOW there's been no input for 5+ minutes. If the idle
+// check failed (null), we treat the user as active, so time is never lost.
+function isIdle(idleSeconds) {
+  return typeof idleSeconds === 'number' && idleSeconds >= IDLE_THRESHOLD_SECONDS;
+}
+
 // Runs a command and resolves to its output, or null if it fails or takes
 // longer than 2 seconds. Never throws — a failed reading is just skipped.
 function runQuietly(file, args) {
@@ -295,10 +319,19 @@ async function readFrontmostApp() {
   return parseAppName(await runQuietly(LSAPPINFO, ['info', '-only', 'name', asn]));
 }
 
+// Asks macOS how long since the last keyboard/mouse input. Resolves to
+// seconds, or null if the check failed.
+async function readIdleSeconds() {
+  return parseIdleSeconds(await runQuietly(IOREG, ['-c', 'IOHIDSystem', '-d', '4']));
+}
+
 // Turns a reading into one line of the activity log ("JSON Lines" format:
 // one JSON object per line), e.g. {"t":"2026-11-21T21:46:44.108Z","app":"Code"}
+// Idle readings get an extra "idle":true.
 function formatActivityLine(reading) {
-  return JSON.stringify({ t: reading.t, app: reading.app }) + '\n';
+  const line = { t: reading.t, app: reading.app };
+  if (reading.idle === true) line.idle = true;
+  return JSON.stringify(line) + '\n';
 }
 
 // Adds one reading to the end of the log file. Returns true if it was saved.
@@ -363,6 +396,7 @@ function timePerApp(readings, from, to) {
       ? Math.min(Math.max(next.t - reading.t, 0), MAX_READING_MS)
       : LAST_READING_MS;
     if (reading.app === OWN_APP_NAME) return; // don't count this app itself
+    if (reading.idle === true) return;        // nobody at the computer — no time
     msByApp[reading.app] = (msByApp[reading.app] || 0) + ms;
   });
 
@@ -391,10 +425,12 @@ async function takeActivityReading() {
   if (readingInProgress) return; // previous check still running — skip this one
   readingInProgress = true;
   try {
-    const app = await readFrontmostApp();
-    // A failed/empty reading is skipped: keep the last good one, log nothing.
+    // Both checks at once: which app is in front, and how long since input.
+    const [app, idleSeconds] = await Promise.all([readFrontmostApp(), readIdleSeconds()]);
+    // A failed/empty app reading is skipped: keep the last good one, log nothing.
     if (app) {
       latestActivity = { t: new Date().toISOString(), app };
+      if (isIdle(idleSeconds)) latestActivity.idle = true;
       appendActivity(ACTIVITY_FILE, latestActivity);
     }
   } catch (err) {
@@ -615,5 +651,5 @@ if (require.main === module || IS_PACKAGED) {
 module.exports = {
   calculateDurationMs, totalsByCategory, resolveRange, removeSessionById, updateSession,
   validateActiveSession, parseFrontAsn, parseAppName, formatActivityLine, appendActivity,
-  parseActivityLog, timePerApp
+  parseActivityLog, timePerApp, parseIdleSeconds, isIdle
 };
