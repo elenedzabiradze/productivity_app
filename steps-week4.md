@@ -58,6 +58,9 @@ Details: functional.md and tech.md, "Week 4" sections.
 
 ## Known limitations after this week
 - Up to 5 minutes of time away from the computer can still be counted (see step 5).
+- The opposite case: reading or watching something for 5+ minutes without touching the
+  keyboard, mouse or trackpad (not even scrolling) is marked idle and not counted.
+  Kept at 5 minutes on purpose; the idle readings stay in the log, so this could be revisited.
 - Only tracked while the tracker is running.
 - In the browser (`node server.js`), the browser itself (e.g. "Google Chrome") counts as an app;
   only the desktop app's own name is excluded.

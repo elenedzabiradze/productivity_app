@@ -98,6 +98,10 @@ Server settings (environment variables, both optional):
 - If the idle check fails, the user is treated as active (the time counts) — never a crash
   or a dropped reading.
 - Known gap: the first 5 minutes away still count, since idle is only detected at 5 minutes.
+- Known gap the other way: reading or watching for 5+ minutes with no input at all (not even
+  scrolling) is marked idle. Any input — mouse move, scroll, click, key — resets the clock.
+  Threshold kept at 5 minutes by choice; idle readings stay in the log (with "idle": true),
+  so a longer threshold or per-app rules could be added later.
 
 ### Storage
 - activity.jsonl in DATA_DIR, one line per reading:
