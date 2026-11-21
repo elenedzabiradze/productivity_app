@@ -4,6 +4,7 @@
 //   1. Serves index.html so you can open the app in your browser.
 //   2. Provides a small API (/api/sessions) that reads and writes
 //      sessions.json, so your session history survives closing the app.
+//   3. Provides /api/totals, which adds up time per category for a date range.
 //
 // No external packages needed — just Node's built-in tools.
 //
@@ -37,6 +38,96 @@ function writeSessions(sessions) {
   fs.writeFileSync(DATA_FILE, JSON.stringify(sessions, null, 2));
 }
 
+// --- Category totals (used by GET /api/totals) ---
+
+const CATEGORIES = ['Work', 'Study', 'Break', 'Other'];
+
+// Midnight at the start of the given day, in this computer's local time.
+function startOfDay(date) {
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+// Monday 00:00 of the week containing `date`. Weeks start on Monday.
+function startOfWeek(date) {
+  const d = startOfDay(date);
+  const day = d.getDay(); // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
+  const diffToMonday = (day === 0) ? 6 : day - 1;
+  d.setDate(d.getDate() - diffToMonday);
+  return d;
+}
+
+function startOfMonth(date) {
+  const d = startOfDay(date);
+  d.setDate(1);
+  return d;
+}
+
+// Turns "2026-11-16" into a local-time Date at midnight, or null if invalid.
+function parseDay(text) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text);
+  if (!match) return null;
+  const d = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+  // Reject impossible dates like 2026-02-31 (JS would silently roll them over).
+  if (d.getMonth() !== Number(match[2]) - 1) return null;
+  return d;
+}
+
+// Works out the { from, to } Dates for a request's query parameters.
+// `from` is inclusive, `to` is exclusive; null means "no limit".
+// Returns { error } instead if the input doesn't make sense.
+function resolveRange(params, now = new Date()) {
+  const fromText = params.get('from');
+  const toText = params.get('to');
+
+  // Custom dates take priority over a preset range.
+  if (fromText || toText) {
+    let from = null;
+    let to = null;
+    if (fromText) {
+      from = parseDay(fromText);
+      if (!from) return { error: 'from must be a date like 2026-11-16' };
+    }
+    if (toText) {
+      const toDay = parseDay(toText);
+      if (!toDay) return { error: 'to must be a date like 2026-11-22' };
+      // Include the whole "to" day by stopping at midnight of the next day.
+      to = new Date(toDay);
+      to.setDate(to.getDate() + 1);
+    }
+    if (from && to && from >= to) return { error: 'from must be on or before to' };
+    return { from, to };
+  }
+
+  const range = params.get('range') || 'all';
+  if (range === 'today') return { from: startOfDay(now), to: null };
+  if (range === 'week') return { from: startOfWeek(now), to: null };
+  if (range === 'month') return { from: startOfMonth(now), to: null };
+  if (range === 'all') return { from: null, to: null };
+  return { error: 'range must be one of: today, week, month, all' };
+}
+
+// Adds up durationMs per category for sessions that STARTED inside [from, to).
+// Pure function (no file or network access) so it's easy to unit test later.
+function totalsByCategory(sessions, from, to) {
+  const totals = {};
+  for (const c of CATEGORIES) totals[c] = 0;
+  let totalMs = 0;
+
+  for (const s of sessions) {
+    const start = new Date(s.startTime);
+    if (from && start < from) continue;
+    if (to && start >= to) continue;
+    const ms = Number(s.durationMs) || 0;
+    // Unknown categories are still counted, just in case old data has one.
+    totals[s.category] = (totals[s.category] || 0) + ms;
+    totalMs += ms;
+  }
+
+  return { totals, totalMs };
+}
+
 function sendJson(res, statusCode, data) {
   const body = JSON.stringify(data);
   res.writeHead(statusCode, {
@@ -47,6 +138,23 @@ function sendJson(res, statusCode, data) {
 }
 
 const server = http.createServer((req, res) => {
+  // Split "/api/totals?range=week" into the path and the query parameters.
+  const url = new URL(req.url, `http://localhost:${PORT}`);
+
+  // --- API: total time per category, optionally within a date range ---
+  if (req.method === 'GET' && url.pathname === '/api/totals') {
+    const range = resolveRange(url.searchParams);
+    if (range.error) return sendJson(res, 400, { error: range.error });
+
+    const { totals, totalMs } = totalsByCategory(readSessions(), range.from, range.to);
+    return sendJson(res, 200, {
+      from: range.from ? range.from.toISOString() : null,
+      to: range.to ? range.to.toISOString() : null,
+      totals,
+      totalMs
+    });
+  }
+
   // --- API: list all saved sessions ---
   if (req.method === 'GET' && req.url === '/api/sessions') {
     return sendJson(res, 200, readSessions());
