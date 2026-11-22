@@ -195,3 +195,41 @@ Server settings (environment variables, both optional):
   app): both computable from activity.jsonl as pure, testable functions.
 - SQLite migration: back up the data folder first, carry over all existing data, keep the old
   JSON files until confirmed, all tests passing afterwards.
+
+## Week 6: focus view and ask your data (planned)
+
+### Focus calculations (step 1)
+- Pure functions over the activity readings (parseActivityLog) for a range [from, to);
+  served by GET /api/focus?range=today|week. "Today" = since local midnight; "week" = since
+  Monday 00:00 (startOfWeek), both up to now.
+- Each reading lasts until the next one, capped at 10 s (same rule as Week 4); the latest
+  reading counts until now, capped at 10 s.
+- **Active time**: sum of non-idle readings. Productivity Tracker's own readings count here
+  (being in the tracker is still using the computer — same choice as the Week 5 work time).
+- **Time per app**: the existing timePerApp (idle and Productivity Tracker excluded).
+- **Longest unbroken stretch**: consecutive non-idle readings of the same app. A stretch
+  ends when the frontmost app changes or an idle reading appears. Two choices to confirm
+  before building:
+  - a gap longer than 10 s (app closed, Mac asleep) also ends the stretch — proposed, since
+    otherwise "unbroken" could span a night's sleep;
+  - Productivity Tracker can't be the longest stretch (consistent with leaving it out of
+    per-app totals) — its readings end a stretch like any other app change.
+- **Active time by hour of day**: 24 buckets (00–23, local time); each reading's time goes to
+  the hour it started in. For "week", the same hour on different days is added together.
+- The whole log is read per request — fine at current size (see Week 4 limitations).
+- Response shape (planned):
+  { from, to, activeMs, longestStretch: { app, ms, start, end } | null,
+    apps: [{ app, ms }], byHour: [24 numbers, ms] }
+
+### Ask your data (step 3)
+- Options are presented and chosen before any code: at least (a) an MCP server exposing the
+  data as tools for Claude, and (b) calling the Claude API from the app — each with where the
+  data goes, where an API key would be stored, and the cost. Decision recorded here once made.
+
+### Weekly summary (step 4)
+- Uses the option chosen in step 3; designed after that choice.
+
+### Later (not this week — see steps-week6.md)
+- Scattered-switching metric (number only); browser tab titles (macOS Automation permission
+  for the browser, local only); SQLite migration (backup first, keep old files until
+  confirmed); menu bar timer.

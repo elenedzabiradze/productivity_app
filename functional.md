@@ -71,3 +71,31 @@ Out of scope for Week 5:
 - Clicking a notification to stop the timer or open a specific part of the app
 - Sounds / custom notification styles
 - Menu bar timer (listed under "Later" in steps-week5.md)
+
+## Week 6: focus view and ask your data (planned)
+
+### Focus view (descriptive only — no notifications)
+A "Focus" card with a Today / This week switch, built from the automatic activity log:
+- **Active time** — time the computer was in use; idle time (5+ minutes without input)
+  doesn't count
+- **Longest unbroken stretch in one app** — e.g. "Code, 1h 12m, 09:40–10:52". A stretch
+  continues until a different app comes to the front or an idle reading appears.
+- **Time per app** — as in "Today by App"; Productivity Tracker itself is left out
+- **Active time by hour of day** — one small bar per hour (00–23), to see when you work most
+- "This week" starts on Monday.
+
+### Ask your data
+Ask plain-language questions about your own sessions and activity, e.g. "How much did I work
+this week?" or "When am I most productive?". **How** this works (and where your data goes,
+API key storage, cost) is decided in step 3, after the options are presented — nothing is
+built before that choice.
+
+### Weekly summary
+A short summary of the week with two or three observations from your data, written by Claude.
+Built only after "ask your data" works.
+
+Out of scope for Week 6 (see "Later" in steps-week6.md):
+- Scattered-switching metric (a number, never a notification)
+- Browser tab titles (e.g. spotting Instagram / Facebook; needs a macOS Automation permission)
+- SQLite migration
+- Menu bar timer
