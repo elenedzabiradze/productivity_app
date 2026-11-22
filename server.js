@@ -17,6 +17,7 @@
 //      from /api/nudges/due and shows. Nudge settings: /api/settings.
 //      Every 5 s it checks whether a break or idle nudge is due.
 //   8. /api/focus: active time, longest stretch, time per app and per hour.
+//   9. /api/week-answers: five ready-made "Your week" answers, all local.
 //
 // No external packages needed — just Node's built-in tools.
 //
@@ -478,6 +479,84 @@ function focusSummary(readings, from, now) {
   };
 }
 
+// --- "Your week" answers (Week 6, step 3): five ready-made questions ---
+
+// Active (non-idle) time per local calendar day, for readings in [from, now).
+// Same duration rule as everywhere: until the next reading, capped at 10 s.
+// Returns { "2026-11-18": ms, ... } keyed by the local date the reading started on.
+function activeMsByDay(readings, from, now) {
+  const inRange = readings.filter(r => r.t >= from && r.t < now).sort((a, b) => a.t - b.t);
+  const byDay = {};
+  inRange.forEach((reading, i) => {
+    if (reading.idle === true) return;
+    const until = i + 1 < inRange.length ? inRange[i + 1].t : now;
+    const ms = Math.min(Math.max(until - reading.t, 0), MAX_READING_MS);
+    const d = reading.t;
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    byDay[key] = (byDay[key] || 0) + ms;
+  });
+  return byDay;
+}
+
+// The 2-hour window (hours h and h+1) with the most active time, from 24
+// per-hour totals. Doesn't wrap past midnight. null if under 30 min in total.
+const MIN_ACTIVE_FOR_PATTERN_MS = 30 * 60 * 1000;
+function bestTwoHourWindow(byHour) {
+  const total = byHour.reduce((a, b) => a + b, 0);
+  if (total < MIN_ACTIVE_FOR_PATTERN_MS) return null;
+  let best = null;
+  for (let h = 0; h < 23; h++) {
+    const ms = byHour[h] + byHour[h + 1];
+    if (!best || ms > best.ms) best = { startHour: h, endHour: h + 2, ms };
+  }
+  return best;
+}
+
+// Works out the five answers for the week containing `now`:
+//   1. sessions: time in manual sessions by category  (+ activeMs: computer time)
+//   2. bestDay: the day with the most active time
+//   3. bestWindow: the most productive 2-hour window
+//   4. longestStretch: the longest unbroken stretch in one app
+//   5. comparison: active time so far vs. last week up to the same point
+// Pure: everything it needs is passed in.
+function weekAnswers({ readings, sessions, now }) {
+  const weekStart = startOfWeek(now);                         // Monday 00:00
+  const lastWeekStart = new Date(weekStart);
+  lastWeekStart.setDate(lastWeekStart.getDate() - 7);         // last Monday 00:00
+  const sameTimeLastWeek = new Date(now);
+  sameTimeLastWeek.setDate(sameTimeLastWeek.getDate() - 7);   // same weekday & time
+
+  const focus = focusSummary(readings, weekStart, now);
+  const sessionTotals = totalsByCategory(sessions, weekStart, now);
+
+  // Best day: the day with the most active time (earliest wins a tie).
+  let bestDay = null;
+  for (const [date, ms] of Object.entries(activeMsByDay(readings, weekStart, now)).sort()) {
+    if (!bestDay || ms > bestDay.ms) bestDay = { date, ms };
+  }
+
+  // Comparison over the same span. Without any activity last week there's
+  // nothing fair to compare with, so lastMs is null.
+  const lastMs = focusSummary(readings, lastWeekStart, sameTimeLastWeek).activeMs;
+  const comparison = {
+    thisMs: focus.activeMs,
+    lastMs: lastMs > 0 ? lastMs : null,
+    diffMs: lastMs > 0 ? focus.activeMs - lastMs : null,
+    percent: lastMs > 0 ? Math.round(((focus.activeMs - lastMs) / lastMs) * 100) : null
+  };
+
+  return {
+    weekStart: weekStart.toISOString(),
+    now: now.toISOString(),
+    sessions: sessionTotals,          // { totals: { Work: ms, … }, totalMs }
+    activeMs: focus.activeMs,
+    bestDay,                          // { date: "YYYY-MM-DD", ms } or null
+    bestWindow: bestTwoHourWindow(focus.byHour), // { startHour, endHour, ms } or null
+    longestStretch: focus.longestStretch,
+    comparison
+  };
+}
+
 // --- Nudge rules: when is a break or idle nudge due? ---
 
 // Active work time between `start` and `now`, from activity readings: each
@@ -815,6 +894,12 @@ const server = http.createServer((req, res) => {
     return sendJson(res, 200, { range, from: from.toISOString(), to: now.toISOString(), ...summary });
   }
 
+  // --- API: the five "Your week" answers (computed locally, nothing sent anywhere) ---
+  if (req.method === 'GET' && url.pathname === '/api/week-answers') {
+    const answers = weekAnswers({ readings: readActivityLog(), sessions: readSessions(), now: new Date() });
+    return sendJson(res, 200, answers);
+  }
+
   // --- API: today's time per app, from the activity log ---
   if (req.method === 'GET' && url.pathname === '/api/activity/today') {
     const from = startOfDay(new Date()); // since local midnight
@@ -985,5 +1070,6 @@ module.exports = {
   validateActiveSession, parseFrontAsn, parseAppName, formatActivityLine, appendActivity,
   parseActivityLog, timePerApp, parseIdleSeconds, isIdle, createNudgeQueue,
   DEFAULT_SETTINGS, normalizeSettings, applySettingsChange,
-  activeWorkMs, initialNudgeState, evaluateNudges, focusSummary
+  activeWorkMs, initialNudgeState, evaluateNudges, focusSummary,
+  activeMsByDay, bestTwoHourWindow, weekAnswers
 };

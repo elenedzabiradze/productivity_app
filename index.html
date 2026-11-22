@@ -500,6 +500,40 @@
     white-space: nowrap;
   }
 
+  /* --- "Your Week" card: question / answer pairs --- */
+
+  .qa {
+    padding: 10px 0;
+    border-bottom: 1px solid #f0f1f3;
+  }
+
+  .qa:first-child {
+    padding-top: 0;
+  }
+
+  .qa:last-child {
+    border-bottom: none;
+    padding-bottom: 0;
+  }
+
+  .qa-question {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--muted);
+  }
+
+  .qa-answer {
+    margin-top: 3px;
+    font-size: 15px;
+    line-height: 1.45;
+  }
+
+  /* "Not enough data yet" style answers. */
+  .qa-answer.is-empty {
+    color: var(--muted);
+    font-size: 14px;
+  }
+
   /* Message under the test button; hidden until the button is clicked. */
   .test-status {
     margin: 10px 0 0;
@@ -784,6 +818,11 @@
     </select>
   </div>
   <div id="focusBody"></div>
+</div>
+
+<div class="card">
+  <h2>Your Week</h2>
+  <div id="weekAnswers"></div>
 </div>
 
 <div class="card">
@@ -1583,6 +1622,83 @@
 
   focusRange.addEventListener('change', refreshFocus);
 
+  // --- "Your Week" card (Week 6, step 3): five ready-made questions ---
+  // The server computes the numbers locally (/api/week-answers); this turns
+  // them into plain sentences. Nothing is sent anywhere.
+
+  const weekAnswersEl = document.getElementById('weekAnswers');
+
+  // One question/answer pair. `answer` is null when there isn't enough data.
+  function qaHtml(question, answer, emptyText) {
+    const body = answer === null
+      ? `<div class="qa-answer is-empty">${emptyText}</div>`
+      : `<div class="qa-answer">${answer}</div>`;
+    return `<div class="qa"><div class="qa-question">${question}</div>${body}</div>`;
+  }
+
+  // "Wednesday" from "2026-11-18" (read as a local date, not UTC).
+  function weekdayName(dateKey) {
+    const [y, m, d] = dateKey.split('-').map(Number);
+    return new Date(y, m - 1, d).toLocaleDateString([], { weekday: 'long' });
+  }
+
+  const pad2 = n => String(n).padStart(2, '0');
+
+  async function refreshWeekAnswers() {
+    let a;
+    try {
+      const res = await fetch('/api/week-answers');
+      a = await res.json();
+    } catch (err) {
+      weekAnswersEl.innerHTML = '<p class="totals-message">Could not load this week\'s answers.</p>';
+      return;
+    }
+
+    // 1. How much did I work this week?
+    const parts = CATEGORIES
+      .filter(c => a.sessions.totals[c] > 0)
+      .map(c => `${c} ${formatShort(a.sessions.totals[c])}`);
+    const sessionText = a.sessions.totalMs > 0
+      ? `${formatShort(a.sessions.totalMs)} in sessions (${parts.join(', ')})`
+      : 'No sessions recorded yet';
+    const worked = (a.sessions.totalMs > 0 || a.activeMs > 0)
+      ? `${sessionText} · ${formatShort(a.activeMs)} active at the computer`
+      : null;
+
+    // 2. Which day was my best?
+    const bestDay = a.bestDay
+      ? `${weekdayName(a.bestDay.date)} — ${formatShort(a.bestDay.ms)} active`
+      : null;
+
+    // 3. When am I most productive?
+    const w = a.bestWindow;
+    const productive = w
+      ? `Between ${pad2(w.startHour)}:00 and ${pad2(w.endHour % 24)}:00 — ${formatShort(w.ms)} active in that window this week`
+      : null;
+
+    // 4. What was my longest focus?
+    const s = a.longestStretch;
+    const longest = s
+      ? `${escapeHtml(s.app)}, ${formatShort(s.ms)} — ${formatClock(new Date(s.start), true)}–${formatClock(new Date(s.end), false)}`
+      : null;
+
+    // 5. How does it compare to last week?
+    const c = a.comparison;
+    let compare = null;
+    if (c.lastMs !== null) {
+      const sign = c.diffMs >= 0 ? '+' : '−';
+      compare = `${sign}${formatShort(Math.abs(c.diffMs))} active (${sign}${Math.abs(c.percent)}%) ` +
+                `compared with the same point last week (${formatShort(c.lastMs)} then)`;
+    }
+
+    weekAnswersEl.innerHTML =
+      qaHtml('How much did I work this week?', worked, 'Nothing recorded this week yet.') +
+      qaHtml('Which day was my best?', bestDay, 'Not enough data yet.') +
+      qaHtml('When am I most productive?', productive, 'Not enough data yet — needs at least 30 minutes of activity this week.') +
+      qaHtml('What was my longest focus?', longest, 'No focus stretch yet this week.') +
+      qaHtml('How does it compare to last week?', compare, 'No activity recorded at this point last week, so there\'s nothing to compare yet.');
+  }
+
   // --- Nudges: settings ---
   // Loaded from the server when the page opens; every change is sent straight
   // away. If the server rejects a value, the controls go back to the saved
@@ -1680,6 +1796,8 @@
   setInterval(refreshNowApp, 5000);
   refreshFocus();
   setInterval(refreshFocus, 60000); // once a minute is plenty for this view
+  refreshWeekAnswers();
+  setInterval(refreshWeekAnswers, 60000);
 </script>
 
 </body>
