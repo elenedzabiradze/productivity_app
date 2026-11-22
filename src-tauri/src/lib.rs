@@ -7,8 +7,13 @@
 //      telling it to keep data in the standard Mac app-data folder,
 //   3. waits for the server to answer, then switches the window to it,
 //   4. every 15 s, collects any "nudges" from the server and shows each as a
-//      Mac notification (works even while the window is hidden).
-// When the app quits, it stops the server it started.
+//      Mac notification (works even while the window is hidden),
+//   5. puts a timer in the Mac menu bar (see tray.rs).
+// Closing the window only hides it (the app keeps tracking in the menu bar);
+// Quit (menu bar or Cmd+Q) really quits. When the app quits, it stops the
+// server it started.
+
+mod tray;
 
 use std::net::{SocketAddr, TcpStream};
 use std::sync::Mutex;
@@ -16,7 +21,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use serde::Deserialize;
-use tauri::{AppHandle, Manager, RunEvent};
+use tauri::{AppHandle, Manager, RunEvent, WindowEvent};
 use tauri_plugin_notification::NotificationExt;
 use tauri_plugin_shell::process::CommandChild;
 use tauri_plugin_shell::ShellExt;
@@ -110,6 +115,9 @@ pub fn run() {
       let handle = app.handle().clone();
       thread::spawn(move || watch_for_nudges(handle));
 
+      // The menu bar timer.
+      tray::setup(app)?;
+
       // Wait for the server in the background (so the window stays
       // responsive), then show the tracker — or an error if it never answers.
       let window = app
@@ -129,14 +137,26 @@ pub fn run() {
 
       Ok(())
     })
+    // Closing the window (red ●) hides it instead of quitting, so the menu bar
+    // timer and automatic tracking keep running.
+    .on_window_event(|window, event| {
+      if let WindowEvent::CloseRequested { api, .. } = event {
+        api.prevent_close();
+        let _ = window.hide();
+      }
+    })
     .build(tauri::generate_context!())
     .expect("error while building tauri application")
-    .run(|app, event| {
+    .run(|app, event| match event {
+      // Clicking the app's Dock icon while the window is hidden brings it back.
+      #[cfg(target_os = "macos")]
+      RunEvent::Reopen { .. } => tray::show_main_window(app),
       // On quit, stop the server we started (not one started by hand).
-      if let RunEvent::Exit = event {
+      RunEvent::Exit => {
         if let Some(child) = app.state::<ServerProcess>().0.lock().unwrap().take() {
           let _ = child.kill();
         }
       }
+      _ => {}
     });
 }
