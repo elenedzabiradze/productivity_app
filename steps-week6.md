@@ -50,4 +50,4 @@ ask plain-language questions about your own data. Details: functional.md and tec
   Needs a macOS Automation permission (for the browser); stays local only.
 - **SQLite migration**: back up the data folder first; carry over all existing data; keep the old
   files until I confirm; all tests still passing.
-- **Menu bar timer**: running time and current app in the Mac menu bar, with Start/Stop.
+- ✅ **Menu bar timer** (built after Week 6): running time and current app in the Mac menu bar, with Start/Stop.

@@ -191,7 +191,7 @@ Server settings (environment variables, both optional):
 - PUT  /api/settings       change nudge settings (validated)
 
 ### Later (not this week — see steps-week5.md)
-- Menu bar timer.
+- Menu bar timer — built after Week 6 (see "Menu bar timer" below).
 - Distraction nudge: an editable app-type list (work / communication / distraction), compared
   with the running session's category. Builds on the frontmost-app readings and the nudge queue.
 - Scattered-switching nudge and focus metrics (switches per 10 minutes, longest stretch in one
@@ -247,4 +247,48 @@ Server settings (environment variables, both optional):
 ### Later (not this week — see steps-week6.md)
 - Scattered-switching metric (number only); browser tab titles (macOS Automation permission
   for the browser, local only); SQLite migration (backup first, keep old files until
-  confirmed); menu bar timer.
+  confirmed). (The menu bar timer was built after Week 6.)
+
+## Menu bar timer (built after Week 6)
+
+### Who does what
+- **Rust (src-tauri/src/tray.rs)** creates the menu bar item with Tauri's tray support
+  (tauri features "tray-icon" and "image-png"). It keeps no timer state of its own.
+- A background thread asks the server **every 5 s** (GET /api/menu-state) and counts the seconds
+  in between itself, updating the title once a second. It rebuilds the menu only when what it
+  shows changes (running task, or last task).
+- Menu actions call the server in the background (so the menu never freezes), then refresh at once:
+  - Stop → POST /api/active/stop (saves the session with the same checks as any new session,
+    then clears active.json; 409 if nothing is running)
+  - Start again → POST /api/active/restart-last (starts the most recently *started* session's
+    task and category; 409 if a timer is already running or there's no previous session)
+  - Open → shows, un-minimises and focuses the window; Quit → exits the app (and its server)
+- **The page** checks GET /api/active every 5 s and catches up with changes made from the menu bar
+  (shows a running timer, or clears it and reloads the history). It skips the check while its own
+  Start/Stop is still talking to the server, so a half-finished change isn't mistaken for an
+  outside one.
+
+### Window behaviour
+- Closing the window is intercepted (WindowEvent::CloseRequested → prevent_close + hide), so the
+  app, its server, automatic tracking and nudges keep running.
+- Clicking the Dock icon while the window is hidden brings it back (RunEvent::Reopen, macOS).
+- Quit from the menu bar or Cmd+Q exits normally; the server the app started is stopped on exit.
+
+### API
+- GET  /api/menu-state           { active | null, elapsedMs, last: { task, category } | null }
+                                 (elapsedMs saves the Rust side from parsing dates)
+- POST /api/active/stop          stop the running timer and save it as a session
+- POST /api/active/restart-last  start the last task again
+
+### Icon
+- src-tauri/icons/tray-icon.svg (source) → tray-icon.png (44×44, black on transparent), used as a
+  macOS "template" image, so macOS recolours it (white in dark mode).
+- To regenerate the PNG after editing the SVG: render it at 512×512 with a transparent background
+  (e.g. headless Chrome with --default-background-color=00000000), then
+  `sips -z 44 44 <rendered.png> --out src-tauri/icons/tray-icon.png`.
+
+### Known limitations
+- New tasks can't be typed in the menu bar — only Stop and Start again (last task).
+- The menu bar title can lag up to 5 s behind a change made in the window (the window catches up
+  with the menu bar within 5 s the same way).
+- On Macs with a notch, a crowded menu bar can hide the icon behind the notch (macOS behaviour).

@@ -70,7 +70,7 @@ Out of scope for Week 5:
 - Nudges based on automatic tracking alone (no session running)
 - Clicking a notification to stop the timer or open a specific part of the app
 - Sounds / custom notification styles
-- Menu bar timer (listed under "Later" in steps-week5.md)
+- Menu bar timer — built after Week 6 (see "Menu bar timer" below)
 
 ## Week 6: focus view and ask your data (planned)
 
@@ -103,4 +103,19 @@ Out of scope for Week 6 (see "Later" in steps-week6.md):
 - Scattered-switching metric (a number, never a notification)
 - Browser tab titles (e.g. spotting Instagram / Facebook; needs a macOS Automation permission)
 - SQLite migration
-- Menu bar timer
+
+## Menu bar timer (built after Week 6)
+A small stopwatch in the Mac menu bar (top right, near Wi-Fi and the clock):
+- While a session timer runs, the time is shown next to it, counting every second
+  (e.g. "25:14", or "1:05:09" after an hour). With no timer: just the icon.
+- Click it for a menu:
+  - while running: "Working on: <task> (<category>)" and **Stop** (saves the session, like the
+    Stop button)
+  - when stopped: **Start again: <last task> (<category>)** — restarts the most recent task
+  - always: **Open Productivity Tracker** and **Quit**
+- The window and the menu bar always agree: starting or stopping in one shows up in the other
+  within a few seconds.
+- **Closing the window (red ●) only hides it** — the app keeps running in the menu bar, so
+  automatic tracking and nudges continue. Bring it back with "Open Productivity Tracker" or the
+  Dock icon. **Quit** (menu bar, or Cmd+Q) really quits and stops tracking.
+- New tasks are typed in the window; the menu bar only stops and restarts.

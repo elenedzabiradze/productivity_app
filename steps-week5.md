@@ -55,7 +55,7 @@ computer. Details: functional.md and tech.md, "Week 5" sections.
 - A server restart mid-session may repeat one nudge.
 
 ## Later (not this week)
-- **Menu bar timer**: a stopwatch icon in the Mac menu bar showing the running time and
+- ✅ **Menu bar timer** (built after Week 6): a stopwatch icon in the Mac menu bar showing the running time and
   current app, with Start/Stop from there — no need to keep the window open.
 - **Distraction nudge**: an editable list that sorts apps into types — work, communication,
   distraction — plus a check that compares the running session's category with the type of
