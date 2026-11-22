@@ -109,6 +109,7 @@ A small stopwatch in the Mac menu bar (top right, near Wi-Fi and the clock):
 - While a session timer runs, the time is shown next to it, counting every second
   (e.g. "25:14", or "1:05:09" after an hour). With no timer: just the icon.
 - Click it for a menu:
+  - at the top (grey): **Now: <app>** — the app in front right now, or "Now: idle"
   - while running: "Working on: <task> (<category>)" and **Stop** (saves the session, like the
     Stop button)
   - when stopped: **Start again: <last task> (<category>)** — restarts the most recent task

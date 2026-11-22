@@ -1019,7 +1019,10 @@ const server = http.createServer((req, res) => {
     const active = readActive();
     // elapsedMs saves the Rust side from parsing dates: it counts on from this.
     const elapsedMs = active ? Math.max(0, Date.now() - new Date(active.startTime).getTime()) : 0;
-    return sendJson(res, 200, { active, elapsedMs, last: lastSessionInfo(readSessions()) });
+    // The app in front right now (from automatic tracking), for "Now: …" in the menu.
+    const currentApp = latestActivity ? latestActivity.app : null;
+    const idle = latestActivity ? latestActivity.idle === true : false;
+    return sendJson(res, 200, { active, elapsedMs, last: lastSessionInfo(readSessions()), currentApp, idle });
   }
 
   // --- API: stop the running timer and save it as a session (menu bar "Stop") ---

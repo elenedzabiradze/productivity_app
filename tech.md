@@ -275,7 +275,8 @@ Server settings (environment variables, both optional):
 - Quit from the menu bar or Cmd+Q exits normally; the server the app started is stopped on exit.
 
 ### API
-- GET  /api/menu-state           { active | null, elapsedMs, last: { task, category } | null }
+- GET  /api/menu-state           { active | null, elapsedMs, last: { task, category } | null,
+                                   currentApp, idle }  (for the grey "Now: <app>" menu line)
                                  (elapsedMs saves the Rust side from parsing dates)
 - POST /api/active/stop          stop the running timer and save it as a session
 - POST /api/active/restart-last  start the last task again

@@ -2,7 +2,8 @@
 //
 // Shows a small stopwatch at the top right of the screen. While a session
 // timer runs, the elapsed time is shown next to it (e.g. "25:14"). Clicking it
-// opens a menu: Stop / Start again, Open Productivity Tracker, Quit.
+// opens a menu: "Now: <app>" (the app in front), Stop / Start again,
+// Open Productivity Tracker, Quit.
 //
 // It doesn't keep any timer state of its own: it asks the server
 // (GET /api/menu-state) every 5 s and counts the seconds in between, and the
@@ -40,6 +41,20 @@ struct MenuState {
   #[serde(rename = "elapsedMs")]
   elapsed_ms: u64,
   last: Option<Task>,
+  // The app in front right now (automatic tracking), and whether you're idle.
+  #[serde(rename = "currentApp", default)]
+  current_app: Option<String>,
+  #[serde(default)]
+  idle: bool,
+}
+
+// "Now: Code", "Now: idle", or None when there's no reading yet.
+fn now_line(state: &MenuState) -> Option<String> {
+  if state.idle {
+    Some("Now: idle".to_string())
+  } else {
+    state.current_app.as_ref().map(|app| format!("Now: {app}"))
+  }
 }
 
 // Set by the menu's Stop / Start again, so the title updates right away
@@ -67,6 +82,13 @@ fn fetch_menu_state() -> Result<MenuState, Box<dyn std::error::Error>> {
 // Builds the menu for the current situation.
 fn build_menu(app: &AppHandle, state: Option<&MenuState>) -> tauri::Result<Menu<Wry>> {
   let menu = Menu::new(app)?;
+
+  // Top line (greyed out, not clickable): which app is in front right now.
+  if let Some(line) = state.and_then(now_line) {
+    menu.append(&MenuItem::with_id(app, "now", line, false, None::<&str>)?)?;
+    menu.append(&PredefinedMenuItem::separator(app)?)?;
+  }
+
   match state {
     Some(MenuState { active: Some(t), .. }) => {
       // A timer is running: say what, and offer Stop.
@@ -151,11 +173,12 @@ pub fn setup(app: &tauri::App) -> tauri::Result<()> {
           Err(err) => log::debug!("Menu state not available yet: {err}"),
         }
 
-        // Rebuild the menu only when what it shows has changed.
+        // Rebuild the menu only when what it shows has changed (task or "Now:" line).
+        let now = state.as_ref().and_then(now_line).unwrap_or_default();
         let key = match &state {
-          Some(MenuState { active: Some(t), .. }) => format!("run:{}:{}", t.task, t.category),
-          Some(MenuState { last: Some(t), .. }) => format!("last:{}:{}", t.task, t.category),
-          _ => "none".to_string(),
+          Some(MenuState { active: Some(t), .. }) => format!("run:{}:{}|{now}", t.task, t.category),
+          Some(MenuState { last: Some(t), .. }) => format!("last:{}:{}|{now}", t.task, t.category),
+          _ => format!("none|{now}"),
         };
         if key != shown_menu_key {
           if let (Some(tray), Ok(menu)) = (handle.tray_by_id(TRAY_ID), build_menu(&handle, state.as_ref())) {
