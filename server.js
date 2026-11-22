@@ -359,6 +359,9 @@ function appendActivity(filePath, reading) {
 // This app's own name as macOS reports it. Its readings stay in the log but
 // are left out of the per-app totals.
 const OWN_APP_NAME = 'Productivity Tracker';
+// While the Mac is locked, macOS reports the lock screen ("loginwindow") as the
+// frontmost app. Nobody is using the computer then, so it counts as idle.
+const LOCK_SCREEN_APP = 'loginwindow';
 // A reading counts as the time until the next one, but at most this long —
 // so gaps (app closed, Mac asleep) don't count as time.
 const MAX_READING_MS = 2 * ACTIVITY_INTERVAL_MS; // 10 seconds
@@ -380,7 +383,10 @@ function parseActivityLog(text) {
     if (!data || typeof data.app !== 'string' || !data.app.trim()) continue;
     const t = new Date(data.t);
     if (Number.isNaN(t.getTime())) continue;
-    readings.push({ ...data, t, app: data.app });
+    const reading = { ...data, t, app: data.app };
+    // Older log lines from the lock screen weren't marked idle yet — treat them as idle.
+    if (reading.app === LOCK_SCREEN_APP) reading.idle = true;
+    readings.push(reading);
   }
   return readings;
 }
@@ -694,7 +700,8 @@ async function takeActivityReading() {
     // A failed/empty app reading is skipped: keep the last good one, log nothing.
     if (app) {
       latestActivity = { t: new Date().toISOString(), app };
-      if (isIdle(idleSeconds)) latestActivity.idle = true;
+      // Idle: no input for 5+ minutes, or the Mac is locked.
+      if (isIdle(idleSeconds) || app === LOCK_SCREEN_APP) latestActivity.idle = true;
       appendActivity(ACTIVITY_FILE, latestActivity);
       sessionReadings.push({ ...latestActivity, t: new Date(latestActivity.t) });
     }
