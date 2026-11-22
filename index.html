@@ -500,38 +500,77 @@
     white-space: nowrap;
   }
 
-  /* --- "Your Week" card: question / answer pairs --- */
+  /* --- "Your Week" card: four tiles + a comparison strip --- */
 
-  .qa {
-    padding: 10px 0;
-    border-bottom: 1px solid #f0f1f3;
+  .week-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
   }
 
-  .qa:first-child {
-    padding-top: 0;
+  @media (max-width: 420px) {
+    .week-grid { grid-template-columns: 1fr; }
   }
 
-  .qa:last-child {
-    border-bottom: none;
-    padding-bottom: 0;
+  .week-tile {
+    border-radius: 12px;
+    padding: 12px 14px;
+    min-width: 0; /* lets long text shorten with "…" instead of widening the grid */
   }
 
-  .qa-question {
-    font-size: 13px;
+  /* Soft tints, matching the category badge colors. */
+  .week-tile.tint-blue   { background: #eef3ff; }
+  .week-tile.tint-amber  { background: #fff7e3; }
+  .week-tile.tint-green  { background: #eaf7ef; }
+  .week-tile.tint-purple { background: #f4eefc; }
+
+  .week-tile-label {
+    font-size: 12px;
     font-weight: 600;
     color: var(--muted);
   }
 
-  .qa-answer {
-    margin-top: 3px;
-    font-size: 15px;
-    line-height: 1.45;
+  .week-tile-emoji {
+    margin-right: 4px;
   }
 
-  /* "Not enough data yet" style answers. */
-  .qa-answer.is-empty {
+  .week-tile-value {
+    margin-top: 4px;
+    font-size: 22px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .week-tile-value.is-empty {
+    color: #9ca3af;
+  }
+
+  .week-tile-sub {
+    margin-top: 2px;
+    font-size: 12px;
+    line-height: 1.4;
     color: var(--muted);
-    font-size: 14px;
+  }
+
+  .nowrap {
+    white-space: nowrap;
+  }
+
+  /* One slim line under the tiles for "compared with last week". */
+  .week-strip {
+    margin-top: 10px;
+    padding: 9px 14px;
+    border-radius: 10px;
+    background: #f7f8fa;
+    font-size: 13px;
+    color: var(--text);
+  }
+
+  .week-strip.is-empty {
+    color: var(--muted);
   }
 
   /* Message under the test button; hidden until the button is clicked. */
@@ -1628,13 +1667,22 @@
 
   const weekAnswersEl = document.getElementById('weekAnswers');
 
-  // One question/answer pair. `answer` is null when there isn't enough data.
-  function qaHtml(question, answer, emptyText) {
-    const body = answer === null
-      ? `<div class="qa-answer is-empty">${emptyText}</div>`
-      : `<div class="qa-answer">${answer}</div>`;
-    return `<div class="qa"><div class="qa-question">${question}</div>${body}</div>`;
+  // One tile: emoji + short label, a big value, a small line under it.
+  // `value` null → a grey "—" with `sub` explaining there isn't enough data yet.
+  function weekTileHtml(tint, emoji, label, value, sub) {
+    const valueHtml = value === null
+      ? '<div class="week-tile-value is-empty">—</div>'
+      : `<div class="week-tile-value">${value}</div>`;
+    return `
+      <div class="week-tile tint-${tint}">
+        <div class="week-tile-label"><span class="week-tile-emoji">${emoji}</span>${label}</div>
+        ${valueHtml}
+        <div class="week-tile-sub">${sub}</div>
+      </div>`;
   }
+
+  // A small emoji per category, for the "This week" tile.
+  const CATEGORY_EMOJI = { Work: '💼', Study: '📚', Break: '☕', Other: '✨' };
 
   // "Wednesday" from "2026-11-18" (read as a local date, not UTC).
   function weekdayName(dateKey) {
@@ -1654,49 +1702,58 @@
       return;
     }
 
-    // 1. How much did I work this week?
-    const parts = CATEGORIES
+    // 1. ⏱️ This week: session time (big), categories + computer time (small).
+    // Each piece is kept on one line (nowrap), so lines break only between pieces.
+    const categoryBits = CATEGORIES
       .filter(c => a.sessions.totals[c] > 0)
-      .map(c => `${c} ${formatShort(a.sessions.totals[c])}`);
-    const sessionText = a.sessions.totalMs > 0
-      ? `${formatShort(a.sessions.totalMs)} in sessions (${parts.join(', ')})`
-      : 'No sessions recorded yet';
-    const worked = (a.sessions.totalMs > 0 || a.activeMs > 0)
-      ? `${sessionText} · ${formatShort(a.activeMs)} active at the computer`
-      : null;
-
-    // 2. Which day was my best?
-    const bestDay = a.bestDay
-      ? `${weekdayName(a.bestDay.date)} — ${formatShort(a.bestDay.ms)} active`
-      : null;
-
-    // 3. When am I most productive?
-    const w = a.bestWindow;
-    const productive = w
-      ? `Between ${pad2(w.startHour)}:00 and ${pad2(w.endHour % 24)}:00 — ${formatShort(w.ms)} active in that window this week`
-      : null;
-
-    // 4. What was my longest focus?
-    const s = a.longestStretch;
-    const longest = s
-      ? `${escapeHtml(s.app)}, ${formatShort(s.ms)} — ${formatClock(new Date(s.start), true)}–${formatClock(new Date(s.end), false)}`
-      : null;
-
-    // 5. How does it compare to last week?
-    const c = a.comparison;
-    let compare = null;
-    if (c.lastMs !== null) {
-      const sign = c.diffMs >= 0 ? '+' : '−';
-      compare = `${sign}${formatShort(Math.abs(c.diffMs))} active (${sign}${Math.abs(c.percent)}%) ` +
-                `compared with the same point last week (${formatShort(c.lastMs)} then)`;
+      .map(c => `<span class="nowrap">${CATEGORY_EMOJI[c]} ${c} ${formatShort(a.sessions.totals[c])}</span>`);
+    const computerBit = `<span class="nowrap">💻 ${formatShort(a.activeMs)} on computer</span>`;
+    let workedValue, workedSub;
+    if (a.sessions.totalMs > 0) {
+      workedValue = formatShort(a.sessions.totalMs);
+      workedSub = [...categoryBits, computerBit].join(' · ');
+    } else if (a.activeMs > 0) {
+      workedValue = formatShort(a.activeMs);
+      workedSub = '💻 on computer · no sessions yet';
+    } else {
+      workedValue = null;
+      workedSub = 'Nothing recorded yet';
     }
 
-    weekAnswersEl.innerHTML =
-      qaHtml('How much did I work this week?', worked, 'Nothing recorded this week yet.') +
-      qaHtml('Which day was my best?', bestDay, 'Not enough data yet.') +
-      qaHtml('When am I most productive?', productive, 'Not enough data yet — needs at least 30 minutes of activity this week.') +
-      qaHtml('What was my longest focus?', longest, 'No focus stretch yet this week.') +
-      qaHtml('How does it compare to last week?', compare, 'No activity recorded at this point last week, so there\'s nothing to compare yet.');
+    // 2. 🏆 Best day.
+    const bestDayValue = a.bestDay ? weekdayName(a.bestDay.date) : null;
+    const bestDaySub = a.bestDay ? `${formatShort(a.bestDay.ms)} active` : 'Not enough data yet';
+
+    // 3. ⚡ Peak hours: the most productive 2-hour window.
+    const w = a.bestWindow;
+    const peakValue = w ? `${pad2(w.startHour)}–${pad2(w.endHour % 24)}h` : null;
+    const peakSub = w ? `${formatShort(w.ms)} active` : 'Needs 30 min of activity';
+
+    // 4. 🎯 Longest focus.
+    const s = a.longestStretch;
+    const focusValue = s ? formatShort(s.ms) : null;
+    const focusSub = s ? `${escapeHtml(s.app)} · ${formatClock(new Date(s.start), true)}` : 'No stretch yet';
+
+    // 5. The strip: compared with the same point last week.
+    const c = a.comparison;
+    let strip;
+    if (c.lastMs !== null) {
+      const up = c.diffMs >= 0;
+      const sign = up ? '+' : '−';
+      strip = `<div class="week-strip">${up ? '📈' : '📉'} <strong>${sign}${formatShort(Math.abs(c.diffMs))}</strong> ` +
+              `(${sign}${Math.abs(c.percent)}%) vs. same time last week</div>`;
+    } else {
+      strip = '<div class="week-strip is-empty">🗓️ Comparison with last week starts next week</div>';
+    }
+
+    weekAnswersEl.innerHTML = `
+      <div class="week-grid">
+        ${weekTileHtml('blue', '⏱️', 'This week', workedValue, workedSub)}
+        ${weekTileHtml('amber', '🏆', 'Best day', bestDayValue, bestDaySub)}
+        ${weekTileHtml('green', '⚡', 'Peak hours', peakValue, peakSub)}
+        ${weekTileHtml('purple', '🎯', 'Longest focus', focusValue, focusSub)}
+      </div>
+      ${strip}`;
   }
 
   // --- Nudges: settings ---
