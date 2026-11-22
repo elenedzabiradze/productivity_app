@@ -80,7 +80,8 @@ A "Focus" card with a Today / This week switch, built from the automatic activit
   doesn't count
 - **Longest unbroken stretch in one app** — e.g. "Code, 1h 12m, 09:40–10:52". A stretch
   continues until a different app comes to the front or an idle reading appears.
-- **Time per app** — as in "Today by App"; Productivity Tracker itself is left out
+- **Time per app** — Productivity Tracker itself is left out. (This replaces the separate
+  "Today by App" card, which was removed once the Focus card existed.)
 - **Active time by hour of day** — one small bar per hour (00–23), to see when you work most
 - "This week" starts on Monday.
 
