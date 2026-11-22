@@ -398,6 +398,13 @@
     color: white;
   }
 
+  /* Small help line under the Nudges description. (Two classes so it wins
+     over the general .totals-message rule, which sets size and margin.) */
+  .totals-message.nudge-hint {
+    margin-top: 6px;
+    font-size: 12px;
+  }
+
   /* "Nudges" card: one row per setting. */
   .nudge-setting {
     display: flex;
@@ -670,6 +677,10 @@
   <h2>Nudges</h2>
   <p class="totals-message">
     Notifications appear within about 15 seconds — in the desktop app only, not in a browser tab.
+  </p>
+  <p class="totals-message nudge-hint">
+    No notifications? Check System Settings → Notifications → Productivity Tracker,
+    and that Focus / Do Not Disturb is off.
   </p>
 
   <!-- Each change is saved straight away (see saveSetting in the script). -->
