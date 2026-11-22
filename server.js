@@ -16,6 +16,7 @@
 //   7. Keeps a queue of "nudges" (notifications) that the desktop app collects
 //      from /api/nudges/due and shows. Nudge settings: /api/settings.
 //      Every 5 s it checks whether a break or idle nudge is due.
+//   8. /api/focus: active time, longest stretch, time per app and per hour.
 //
 // No external packages needed — just Node's built-in tools.
 //
@@ -413,6 +414,70 @@ function timePerApp(readings, from, to) {
   return { apps, totalMs };
 }
 
+// --- Focus view (Week 6): active time, longest stretch, time per hour ---
+
+// Summarises the readings between `from` and `now` (both Dates):
+//   activeMs        — all non-idle time, INCLUDING this app (you're using the computer)
+//   longestStretch  — the longest unbroken run in one app: { app, ms, start, end } or null.
+//                     A run ends when the app changes, an idle reading appears, there's a
+//                     gap over 10 s (app closed / Mac asleep), or this app comes to the front.
+//   apps            — time per app, as in "Today by App" (idle and this app left out)
+//   byHour          — 24 numbers (ms): active time per local hour of day, 00–23
+// Each reading lasts until the next one, capped at 10 s; the latest counts until `now`.
+function focusSummary(readings, from, now) {
+  const inRange = readings
+    .filter(r => r.t >= from && r.t < now)
+    .sort((a, b) => a.t - b.t);
+
+  let activeMs = 0;
+  const byHour = new Array(24).fill(0);
+  let longest = null;  // best stretch so far
+  let current = null;  // stretch being built: { app, ms, start, end }
+
+  // Closes the current stretch, keeping it if it's the longest so far.
+  const endStretch = () => {
+    if (current && (!longest || current.ms > longest.ms)) longest = current;
+    current = null;
+  };
+
+  inRange.forEach((reading, i) => {
+    const next = inRange[i + 1];
+    const until = next ? next.t : now;
+    const ms = Math.min(Math.max(until - reading.t, 0), MAX_READING_MS);
+    const prev = inRange[i - 1];
+
+    // A gap since the previous reading (app closed, Mac asleep) breaks a stretch.
+    if (prev && reading.t - prev.t > MAX_READING_MS) endStretch();
+
+    if (reading.idle === true) {
+      endStretch(); // nobody at the computer: no time, and the stretch is over
+      return;
+    }
+
+    activeMs += ms;
+    byHour[reading.t.getHours()] += ms;
+
+    if (reading.app === OWN_APP_NAME) {
+      endStretch(); // the tracker itself can't be a "focus stretch"
+      return;
+    }
+    if (current && current.app !== reading.app) endStretch();
+    if (!current) current = { app: reading.app, ms: 0, start: reading.t, end: reading.t };
+    current.ms += ms;
+    current.end = new Date(reading.t.getTime() + ms);
+  });
+  endStretch();
+
+  return {
+    activeMs,
+    longestStretch: longest
+      ? { app: longest.app, ms: longest.ms, start: longest.start.toISOString(), end: longest.end.toISOString() }
+      : null,
+    apps: timePerApp(readings, from, now).apps,
+    byHour
+  };
+}
+
 // --- Nudge rules: when is a break or idle nudge due? ---
 
 // Active work time between `start` and `now`, from activity readings: each
@@ -738,6 +803,18 @@ const server = http.createServer((req, res) => {
     return sendJson(res, 200, { queued: true });
   }
 
+  // --- API: focus view for today or this week (?range=today|week) ---
+  if (req.method === 'GET' && url.pathname === '/api/focus') {
+    const range = url.searchParams.get('range') || 'today';
+    const now = new Date();
+    let from;
+    if (range === 'today') from = startOfDay(now);
+    else if (range === 'week') from = startOfWeek(now); // Monday 00:00
+    else return sendJson(res, 400, { error: 'range must be today or week' });
+    const summary = focusSummary(readActivityLog(), from, now);
+    return sendJson(res, 200, { range, from: from.toISOString(), to: now.toISOString(), ...summary });
+  }
+
   // --- API: today's time per app, from the activity log ---
   if (req.method === 'GET' && url.pathname === '/api/activity/today') {
     const from = startOfDay(new Date()); // since local midnight
@@ -908,5 +985,5 @@ module.exports = {
   validateActiveSession, parseFrontAsn, parseAppName, formatActivityLine, appendActivity,
   parseActivityLog, timePerApp, parseIdleSeconds, isIdle, createNudgeQueue,
   DEFAULT_SETTINGS, normalizeSettings, applySettingsChange,
-  activeWorkMs, initialNudgeState, evaluateNudges
+  activeWorkMs, initialNudgeState, evaluateNudges, focusSummary
 };

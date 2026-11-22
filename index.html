@@ -398,6 +398,108 @@
     color: white;
   }
 
+  /* --- Focus card (Week 6) --- */
+
+  #focusRange {
+    padding: 6px 10px;
+    font-size: 13px;
+    font-family: inherit;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: #fbfbfc;
+    color: var(--text);
+  }
+
+  /* Two figures side by side: active time, longest stretch. */
+  .focus-stats {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+
+  @media (max-width: 480px) {
+    .focus-stats { grid-template-columns: 1fr; }
+  }
+
+  .focus-stat {
+    background: #f7f8fa;
+    border-radius: 10px;
+    padding: 12px 14px;
+  }
+
+  .focus-stat-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+
+  .focus-stat-value {
+    font-size: 24px;
+    font-weight: 700;
+    margin-top: 4px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .focus-stat-sub {
+    font-size: 13px;
+    color: var(--muted);
+    margin-top: 2px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .focus-subhead {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--muted);
+    margin: 0 0 8px;
+  }
+
+  /* 24 bars, one per hour of the day. */
+  .hour-chart {
+    display: flex;
+    align-items: flex-end;
+    gap: 2px;
+    height: 90px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .hour-col {
+    flex: 1;
+    height: 100%;
+    display: flex;
+    align-items: flex-end;
+    cursor: default;
+  }
+
+  .hour-bar {
+    width: 100%;
+    background: var(--accent);
+    border-radius: 3px 3px 0 0;
+  }
+
+  .hour-col:hover .hour-bar {
+    background: var(--accent-dark);
+  }
+
+  .hour-labels {
+    display: flex;
+    gap: 2px;
+    margin: 4px 0 20px;
+    font-size: 11px;
+    color: var(--muted);
+  }
+
+  .hour-labels span {
+    flex: 1;
+    overflow: visible;
+    white-space: nowrap;
+  }
+
   /* Message under the test button; hidden until the button is clicked. */
   .test-status {
     margin: 10px 0 0;
@@ -676,6 +778,17 @@
 <div class="card">
   <h2>Today by App</h2>
   <div id="appsList"></div>
+</div>
+
+<div class="card">
+  <div class="totals-header">
+    <h2>Focus</h2>
+    <select id="focusRange">
+      <option value="today">Today</option>
+      <option value="week">This Week</option>
+    </select>
+  </div>
+  <div id="focusBody"></div>
 </div>
 
 <div class="card">
@@ -1387,26 +1500,113 @@
       appsList.innerHTML = '<p class="totals-message">No app activity recorded today yet.</p>';
       return;
     }
+    appsList.innerHTML = appsListHtml(data.apps);
+  }
 
-    const shown = data.apps.slice(0, MAX_APP_ROWS);
-    const rest = data.apps.slice(MAX_APP_ROWS);
-    let html = shown.map(a => appRowHtml(a.app, a.ms, data.totalMs, false)).join('');
+  // The list of app rows (top 10, the rest folded into "Other apps", then a
+  // Total row). Shared by "Today by App" and the Focus card.
+  function appsListHtml(apps) {
+    const totalMs = apps.reduce((sum, a) => sum + a.ms, 0);
+    const shown = apps.slice(0, MAX_APP_ROWS);
+    const rest = apps.slice(MAX_APP_ROWS);
+    let html = shown.map(a => appRowHtml(a.app, a.ms, totalMs, false)).join('');
     if (rest.length > 0) {
       const restMs = rest.reduce((sum, a) => sum + a.ms, 0);
-      const label = `Other apps (${rest.length})`;
-      html += appRowHtml(label, restMs, data.totalMs, true);
+      html += appRowHtml(`Other apps (${rest.length})`, restMs, totalMs, true);
     }
     html += `
       <div class="totals-row totals-total">
         <span>Total</span>
         <span class="totals-value">
-          <span class="totals-duration">${formatDuration(data.totalMs)}</span>
+          <span class="totals-duration">${formatDuration(totalMs)}</span>
           <span class="totals-percent"></span>
         </span>
       </div>
     `;
-    appsList.innerHTML = html;
+    return html;
   }
+
+  // --- Focus card (Week 6): today or this week, from the activity log ---
+  // Shows active time, the longest unbroken stretch in one app, active time per
+  // hour of day (24 bars) and time per app. Descriptive only — no notifications.
+
+  const focusRange = document.getElementById('focusRange');
+  const focusBody = document.getElementById('focusBody');
+
+  // Short duration for the big figures: "1h 12m", "25m", "40s".
+  function formatShort(ms) {
+    const totalMinutes = Math.floor(ms / 60000);
+    const h = Math.floor(totalMinutes / 60);
+    const m = totalMinutes % 60;
+    if (h > 0) return `${h}h ${m}m`;
+    if (m > 0) return `${m}m`;
+    return `${Math.floor(ms / 1000)}s`;
+  }
+
+  // "09:40" — or, for the week view, "Mon 09:40".
+  function formatClock(date, withDay) {
+    const time = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+    return withDay ? `${date.toLocaleDateString([], { weekday: 'short' })} ${time}` : time;
+  }
+
+  // 24 bars, one per hour; height relative to the busiest hour. Each column is
+  // full height so the whole column (not just the bar) shows the tooltip.
+  function hourChartHtml(byHour) {
+    const max = Math.max(...byHour);
+    const columns = byHour.map((ms, hour) => {
+      const pct = max > 0 ? (ms / max) * 100 : 0;
+      const label = `${String(hour).padStart(2, '0')}:00–${String((hour + 1) % 24).padStart(2, '0')}:00: ${formatShort(ms)}`;
+      return `<div class="hour-col" title="${label}"><div class="hour-bar" style="height: ${pct}%"></div></div>`;
+    }).join('');
+    // Labels only every 3 hours, so they don't crowd.
+    const labels = byHour.map((_, hour) =>
+      `<span>${hour % 3 === 0 ? String(hour).padStart(2, '0') : ''}</span>`).join('');
+    return `<div class="hour-chart">${columns}</div><div class="hour-labels">${labels}</div>`;
+  }
+
+  async function refreshFocus() {
+    let data;
+    try {
+      const res = await fetch('/api/focus?range=' + encodeURIComponent(focusRange.value));
+      data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+    } catch (err) {
+      focusBody.innerHTML = '<p class="totals-message">Could not load the focus view.</p>';
+      return;
+    }
+
+    const isWeek = data.range === 'week';
+    if (data.activeMs === 0) {
+      focusBody.innerHTML = `<p class="totals-message">No activity recorded ${isWeek ? 'this week' : 'today'} yet.</p>`;
+      return;
+    }
+
+    const s = data.longestStretch;
+    const stretchHtml = s
+      ? `<div class="focus-stat-value">${formatShort(s.ms)}</div>
+         <div class="focus-stat-sub">${escapeHtml(s.app)} · ${formatClock(new Date(s.start), isWeek)}–${formatClock(new Date(s.end), false)}</div>`
+      : `<div class="focus-stat-value">—</div><div class="focus-stat-sub">No stretch yet</div>`;
+
+    focusBody.innerHTML = `
+      <div class="focus-stats">
+        <div class="focus-stat">
+          <div class="focus-stat-label">Active time</div>
+          <div class="focus-stat-value">${formatShort(data.activeMs)}</div>
+          <div class="focus-stat-sub">idle time not counted</div>
+        </div>
+        <div class="focus-stat">
+          <div class="focus-stat-label">Longest stretch in one app</div>
+          ${stretchHtml}
+        </div>
+      </div>
+      <p class="focus-subhead">Active time by hour of day</p>
+      ${hourChartHtml(data.byHour)}
+      <p class="focus-subhead">Time per app</p>
+      ${data.apps.length ? appsListHtml(data.apps) : '<p class="totals-message">No app time yet.</p>'}
+    `;
+  }
+
+  focusRange.addEventListener('change', refreshFocus);
 
   // --- Nudges: settings ---
   // Loaded from the server when the page opens; every change is sent straight
@@ -1505,6 +1705,8 @@
   setInterval(refreshNowApp, 5000);
   refreshAppsToday();
   setInterval(refreshAppsToday, 15000);
+  refreshFocus();
+  setInterval(refreshFocus, 60000); // once a minute is plenty for this view
 </script>
 
 </body>
