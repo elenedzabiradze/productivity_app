@@ -22,18 +22,23 @@ ask plain-language questions about your own data. Details: functional.md and tec
    - Longest stretch; active time per hour; an idle reading splitting a stretch; an empty log;
      readings from other days ignored; broken log lines skipped.
 
-3. **Ask your data — options first, no code yet**
-   - Present the options for answering plain-language questions about my sessions and activity
-     log (e.g. "how much did I work this week?", "when am I most productive?"), including at least:
-     - (a) an MCP server that exposes my data as tools, so Claude can query it
-     - (b) calling the Claude API from the app
-   - For each option, in plain language: where my data goes, where an API key would be stored,
-     and what it costs.
-   - **Wait for my choice before writing any code.**
+3. **Ask your data — decided: option (d), fully local, no AI**
+   - Options presented: (a) MCP server for Claude, (b) Claude API from the app, (c) asking
+     Claude Code to read the files, (d) fully local ready-made answers. **Chosen: (d)** —
+     free, nothing leaves the Mac. (a) and (b) stay possible later and would reuse these
+     calculations.
+   - A "Your week" card answering five ready-made questions, computed on the Mac:
+     1. How much did I work this week? (session time by category + active computer time)
+     2. Which day was my best? (most active time)
+     3. When am I most productive? (the best 2-hour window of the day)
+     4. What was my longest focus? (longest unbroken stretch in one app)
+     5. How does it compare to last week? (active time vs. the same point last week)
+   - Tests for the answer calculations.
 
-4. **Weekly summary** — only after step 3 works
-   - A short summary of the week with two or three observations drawn from my data,
-     written by Claude, using whichever option was chosen in step 3.
+4. **Weekly summary — local, no AI** (only after step 3 works)
+   - Two or three short observations picked by simple rules from the step 3 answers
+     (e.g. best day, most productive hours, change vs. last week), written from fixed
+     sentence templates — not by Claude, since option (d) uses no AI.
 
 5. **Commit after each step** (steps 1–4 each get their own commit; step 3's options are
    presented first, its code committed once built).

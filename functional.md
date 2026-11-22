@@ -85,15 +85,19 @@ A "Focus" card with a Today / This week switch, built from the automatic activit
 - **Active time by hour of day** — one small bar per hour (00–23), to see when you work most
 - "This week" starts on Monday.
 
-### Ask your data
-Ask plain-language questions about your own sessions and activity, e.g. "How much did I work
-this week?" or "When am I most productive?". **How** this works (and where your data goes,
-API key storage, cost) is decided in step 3, after the options are presented — nothing is
-built before that choice.
+### Ask your data — "Your week" card (option d: fully local, no AI)
+Five ready-made questions, answered from your own data on this Mac (nothing is sent anywhere):
+1. **How much did I work this week?** — session time by category, plus active computer time
+2. **Which day was my best?** — the day with the most active time
+3. **When am I most productive?** — the 2-hour window of the day with the most active time
+4. **What was my longest focus?** — the longest unbroken stretch in one app
+5. **How does it compare to last week?** — active time so far vs. the same point last week
+You can't type your own questions with this option; asking Claude (option a: MCP server, or
+b: an "Ask" box using the Claude API) could be added later and would reuse these answers.
 
-### Weekly summary
-A short summary of the week with two or three observations from your data, written by Claude.
-Built only after "ask your data" works.
+### Weekly summary (local)
+Two or three short observations about the week, chosen by simple rules and written from
+fixed sentence templates (no AI). Built after the "Your week" card.
 
 Out of scope for Week 6 (see "Later" in steps-week6.md):
 - Scattered-switching metric (a number, never a notification)

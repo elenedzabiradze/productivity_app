@@ -221,13 +221,25 @@ Server settings (environment variables, both optional):
   { from, to, activeMs, longestStretch: { app, ms, start, end } | null,
     apps: [{ app, ms }], byHour: [24 numbers, ms] }
 
-### Ask your data (step 3)
-- Options are presented and chosen before any code: at least (a) an MCP server exposing the
-  data as tools for Claude, and (b) calling the Claude API from the app — each with where the
-  data goes, where an API key would be stored, and the cost. Decision recorded here once made.
+### Ask your data (step 3) — decision: option (d), fully local
+- Options presented: (a) MCP server exposing the data as tools for Claude (no API key, no extra
+  cost, only tool results leave the Mac); (b) Claude API from the app (separate pay-per-use
+  Console account, key in the macOS Keychain, the question + an aggregated summary sent per
+  question); (c) Claude Code reading the files directly; (d) fully local ready-made answers.
+- **Chosen: (d).** Nothing leaves the Mac; no key; no cost. (a)/(b) remain possible later and
+  would reuse the same calculations (as MCP tools, or as the summary sent to the API).
+- Server: GET /api/week-answers → one pure function, weekAnswers, computes structured data;
+  the page turns it into sentences.
+  - week = Monday 00:00 → now; sessions via totalsByCategory; active time / longest stretch
+    via focusSummary
+  - best day: active time per local calendar day this week (same reading-duration rules)
+  - most productive: the 2-hour window (hours h and h+1, 00–23, no wrap past midnight) with
+    the most active time this week; none if under 30 min of activity in total
+  - comparison: this week so far vs. last week over the same span (last Monday 00:00 → the
+    same weekday and time last week), so a half-finished week isn't compared to a full one
 
-### Weekly summary (step 4)
-- Uses the option chosen in step 3; designed after that choice.
+### Weekly summary (step 4) — local
+- Rule-picked observations from weekAnswers, written from fixed templates; no AI.
 
 ### Later (not this week — see steps-week6.md)
 - Scattered-switching metric (number only); browser tab titles (macOS Automation permission
