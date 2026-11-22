@@ -536,10 +536,12 @@ function weekAnswers({ readings, sessions, now }) {
   const sessionTotals = totalsByCategory(sessions, weekStart, now);
 
   // Best day: the day with the most active time (earliest wins a tie).
+  const byDay = activeMsByDay(readings, weekStart, now);
   let bestDay = null;
-  for (const [date, ms] of Object.entries(activeMsByDay(readings, weekStart, now)).sort()) {
+  for (const [date, ms] of Object.entries(byDay).sort()) {
     if (!bestDay || ms > bestDay.ms) bestDay = { date, ms };
   }
+  const daysWithActivity = Object.values(byDay).filter(ms => ms > 0).length;
 
   // Comparison over the same span. Without any activity last week there's
   // nothing fair to compare with, so lastMs is null.
@@ -557,10 +559,79 @@ function weekAnswers({ readings, sessions, now }) {
     sessions: sessionTotals,          // { totals: { Work: ms, … }, totalMs }
     activeMs: focus.activeMs,
     bestDay,                          // { date: "YYYY-MM-DD", ms } or null
+    daysWithActivity,                 // how many days this week had any activity
     bestWindow: bestTwoHourWindow(focus.byHour), // { startHour, endHour, ms } or null
     longestStretch: focus.longestStretch,
     comparison
   };
+}
+
+// --- Weekly summary (Week 6, step 4): 2–3 observations from fixed templates ---
+// Local and rule-based (option d: no AI). Built from weekAnswers' result.
+
+// Short duration for sentences: "1h 12m", "25m", "40s".
+function formatShortDuration(ms) {
+  const totalMinutes = Math.floor(ms / 60000);
+  const h = Math.floor(totalMinutes / 60);
+  const m = totalMinutes % 60;
+  if (h > 0) return `${h}h ${m}m`;
+  if (m > 0) return `${m}m`;
+  return `${Math.floor(ms / 1000)}s`;
+}
+
+const pad2 = n => String(n).padStart(2, '0');
+const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+// Thresholds for the rules below.
+const SAME_AS_LAST_WEEK_PERCENT = 10;      // within ±10% counts as "about the same"
+const STRONG_FOCUS_MS = 45 * 60 * 1000;    // a stretch this long is worth praising
+const SHORT_BURSTS_MS = 20 * 60 * 1000;    // longest stretch under this → "short bursts"
+const TIMER_GAP_MS = 3 * 60 * 60 * 1000;   // sessions this much over computer time → check
+
+// Returns up to `max` observations: [{ emoji, text }], most important first.
+function weeklySummary(answers, max = 3) {
+  const out = [];
+  const { comparison: c, longestStretch: s, sessions, activeMs, bestWindow: w, bestDay } = answers;
+
+  // 1. Compared with last week (always first; says when there's nothing yet).
+  if (c.lastMs === null) {
+    out.push({ emoji: '🗓️', text: 'Comparison with last week starts next week.' });
+  } else if (Math.abs(c.percent) < SAME_AS_LAST_WEEK_PERCENT) {
+    out.push({ emoji: '⚖️', text: 'About as active as at this point last week.' });
+  } else if (c.percent > 0) {
+    out.push({ emoji: '📈', text: `${c.percent}% more active than at this point last week (+${formatShortDuration(c.diffMs)}).` });
+  } else {
+    out.push({ emoji: '📉', text: `${Math.abs(c.percent)}% less active than at this point last week (−${formatShortDuration(-c.diffMs)}).` });
+  }
+
+  // 2. Focus: praise a long stretch, or note short bursts.
+  if (s && s.ms >= STRONG_FOCUS_MS) {
+    out.push({ emoji: '🎯', text: `Strong focus: ${formatShortDuration(s.ms)} straight in ${s.app}.` });
+  } else if (s && s.ms < SHORT_BURSTS_MS) {
+    out.push({ emoji: '🔀', text: `Your focus came in short bursts — the longest was ${formatShortDuration(s.ms)}.` });
+  }
+
+  // 3. Timer check: sessions far longer than computer use.
+  if (sessions.totalMs > 2 * activeMs && sessions.totalMs - activeMs >= TIMER_GAP_MS) {
+    out.push({
+      emoji: '📝',
+      text: `Sessions add up to ${formatShortDuration(sessions.totalMs)}, the computer was active ${formatShortDuration(activeMs)} — fine for offline work, or a timer was left running.`
+    });
+  }
+
+  // 4. Peak hours.
+  if (w) {
+    out.push({ emoji: '⚡', text: `You're most active between ${pad2(w.startHour)}:00 and ${pad2(w.endHour % 24)}:00.` });
+  }
+
+  // 5. Best day — only meaningful once there are at least two days to compare.
+  if (bestDay && answers.daysWithActivity >= 2) {
+    const [y, m, d] = bestDay.date.split('-').map(Number);
+    const name = WEEKDAYS[new Date(y, m - 1, d).getDay()];
+    out.push({ emoji: '🏆', text: `${name} was your strongest day (${formatShortDuration(bestDay.ms)} active).` });
+  }
+
+  return out.slice(0, max);
 }
 
 // --- Nudge rules: when is a break or idle nudge due? ---
@@ -904,7 +975,8 @@ const server = http.createServer((req, res) => {
   // --- API: the five "Your week" answers (computed locally, nothing sent anywhere) ---
   if (req.method === 'GET' && url.pathname === '/api/week-answers') {
     const answers = weekAnswers({ readings: readActivityLog(), sessions: readSessions(), now: new Date() });
-    return sendJson(res, 200, answers);
+    // Plus the local "In a few words" summary (step 4).
+    return sendJson(res, 200, { ...answers, summary: weeklySummary(answers) });
   }
 
   // --- API: today's time per app, from the activity log ---
@@ -1078,5 +1150,5 @@ module.exports = {
   parseActivityLog, timePerApp, parseIdleSeconds, isIdle, createNudgeQueue,
   DEFAULT_SETTINGS, normalizeSettings, applySettingsChange,
   activeWorkMs, initialNudgeState, evaluateNudges, focusSummary,
-  activeMsByDay, bestTwoHourWindow, weekAnswers
+  activeMsByDay, bestTwoHourWindow, weekAnswers, weeklySummary
 };

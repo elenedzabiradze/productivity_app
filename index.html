@@ -569,8 +569,29 @@
     color: var(--text);
   }
 
-  .week-strip.is-empty {
+  .week-strip-title {
+    font-size: 12px;
+    font-weight: 600;
     color: var(--muted);
+    margin-bottom: 4px;
+  }
+
+  /* The 2–3 observations: one short line each, emoji first. */
+  .week-summary {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+
+  .week-summary li + li {
+    margin-top: 2px;
+  }
+
+  .summary-emoji {
+    display: inline-block;
+    width: 22px;
   }
 
   /* Message under the test button; hidden until the button is clicked. */
@@ -1734,17 +1755,16 @@
     const focusValue = s ? formatShort(s.ms) : null;
     const focusSub = s ? `${escapeHtml(s.app)} · ${formatClock(new Date(s.start), true)}` : 'No stretch yet';
 
-    // 5. The strip: compared with the same point last week.
-    const c = a.comparison;
-    let strip;
-    if (c.lastMs !== null) {
-      const up = c.diffMs >= 0;
-      const sign = up ? '+' : '−';
-      strip = `<div class="week-strip">${up ? '📈' : '📉'} <strong>${sign}${formatShort(Math.abs(c.diffMs))}</strong> ` +
-              `(${sign}${Math.abs(c.percent)}%) vs. same time last week</div>`;
-    } else {
-      strip = '<div class="week-strip is-empty">🗓️ Comparison with last week starts next week</div>';
-    }
+    // 5. + step 4: "In a few words" — 2–3 short observations from the server
+    // (rule-based, local). The comparison with last week is always the first.
+    const summaryHtml = (a.summary || [])
+      .map(o => `<li><span class="summary-emoji">${o.emoji}</span>${escapeHtml(o.text)}</li>`)
+      .join('');
+    const strip = `
+      <div class="week-strip">
+        <div class="week-strip-title">In a few words</div>
+        <ul class="week-summary">${summaryHtml}</ul>
+      </div>`;
 
     weekAnswersEl.innerHTML = `
       <div class="week-grid">
