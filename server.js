@@ -18,6 +18,8 @@
 //      Every 5 s it checks whether a break or idle nudge is due.
 //   8. /api/focus: active time, longest stretch, time per app and per hour.
 //   9. /api/week-answers: five ready-made "Your week" answers, all local.
+//  10. For the menu bar timer: /api/menu-state, /api/active/stop,
+//      /api/active/restart-last.
 //
 // No external packages needed — just Node's built-in tools.
 //
@@ -877,6 +879,32 @@ function writeSettings(settings) {
   fs.writeFileSync(SETTINGS_FILE, JSON.stringify(settings, null, 2));
 }
 
+// --- Menu bar timer support: stop / start-again without the window ---
+
+// Turns the running timer into a finished session ending at `endTime`, with the
+// same checks as any other new session (task, category, end not before start).
+// Throws with a readable message if it isn't valid.
+function sessionFromActive(active, endTime) {
+  return updateSession({}, {
+    task: active.task,
+    category: active.category,
+    startTime: active.startTime,
+    endTime: new Date(endTime).toISOString()
+  });
+}
+
+// The most recently started session's task and category, or null if none —
+// for "Start again: <task>" in the menu bar.
+function lastSessionInfo(sessions) {
+  let last = null;
+  for (const s of sessions) {
+    const t = new Date(s.startTime);
+    if (Number.isNaN(t.getTime()) || typeof s.task !== 'string' || !s.task.trim()) continue;
+    if (!last || t > last.t) last = { t, task: s.task, category: s.category };
+  }
+  return last ? { task: last.task, category: last.category } : null;
+}
+
 // Collects a request's body and parses it as JSON. Calls onBody(data) on
 // success, or replies with a 400 error if the body isn't valid JSON.
 function readJsonBody(req, res, onBody) {
@@ -984,6 +1012,44 @@ const server = http.createServer((req, res) => {
     const from = startOfDay(new Date()); // since local midnight
     const { apps, totalMs } = timePerApp(readActivityLog(), from, null);
     return sendJson(res, 200, { from: from.toISOString(), apps, totalMs });
+  }
+
+  // --- API: what the menu bar should show (running timer + last task) ---
+  if (req.method === 'GET' && url.pathname === '/api/menu-state') {
+    return sendJson(res, 200, { active: readActive(), last: lastSessionInfo(readSessions()) });
+  }
+
+  // --- API: stop the running timer and save it as a session (menu bar "Stop") ---
+  if (req.method === 'POST' && url.pathname === '/api/active/stop') {
+    const active = readActive();
+    if (!active) return sendJson(res, 409, { error: 'No timer is running' });
+    let session;
+    try {
+      session = sessionFromActive(active, new Date());
+    } catch (err) {
+      return sendJson(res, 400, { error: err.message });
+    }
+    const sessions = readSessions();
+    session.id = Date.now().toString();
+    sessions.push(session);
+    writeSessions(sessions);
+    clearActive();
+    return sendJson(res, 200, session);
+  }
+
+  // --- API: start the last task again (menu bar "Start again") ---
+  if (req.method === 'POST' && url.pathname === '/api/active/restart-last') {
+    if (readActive()) return sendJson(res, 409, { error: 'A timer is already running' });
+    const last = lastSessionInfo(readSessions());
+    if (!last) return sendJson(res, 409, { error: 'No previous session to start again' });
+    let active;
+    try {
+      active = validateActiveSession({ ...last, startTime: new Date().toISOString() });
+    } catch (err) {
+      return sendJson(res, 400, { error: err.message });
+    }
+    writeActive(active);
+    return sendJson(res, 200, active);
   }
 
   // --- API: the running timer (so it survives closing the app) ---
@@ -1150,5 +1216,6 @@ module.exports = {
   parseActivityLog, timePerApp, parseIdleSeconds, isIdle, createNudgeQueue,
   DEFAULT_SETTINGS, normalizeSettings, applySettingsChange,
   activeWorkMs, initialNudgeState, evaluateNudges, focusSummary,
-  activeMsByDay, bestTwoHourWindow, weekAnswers, weeklySummary
+  activeMsByDay, bestTwoHourWindow, weekAnswers, weeklySummary,
+  sessionFromActive, lastSessionInfo
 };

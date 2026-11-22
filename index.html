@@ -1214,6 +1214,7 @@
   // status line, locks the inputs, and ticks the elapsed time every second.
   // Used both by the Start button and when resuming a timer on page load.
   function showRunningTimer() {
+    clearInterval(timerInterval); // never two tickers at once
     const elapsedNow = formatElapsed(new Date() - currentSession.startTime);
     statusEl.innerHTML = `Working on "${currentSession.task}" [${currentSession.category}] — started at ${formatTime(currentSession.startTime)} &nbsp; <span id="elapsed">${elapsedNow}</span>`;
 
@@ -1232,8 +1233,56 @@
     }, 1000);
   }
 
+  // Switches the page back to "no timer running": clears the status line and
+  // unlocks the inputs. Used after Stop, and when the timer was stopped from
+  // the menu bar.
+  function showStoppedTimer() {
+    clearInterval(timerInterval);
+    timerInterval = null;
+    currentSession = null;
+    statusEl.textContent = '';
+    taskInput.value = '';
+    taskInput.disabled = false;
+    categorySelect.disabled = false;
+    startBtn.disabled = false;
+    stopBtn.disabled = true;
+  }
+
   // The in-progress "a timer is running" request to the server (see Start).
   let activeSaveRequest = null;
+
+  // True while Start or Stop in this window is talking to the server, so the
+  // sync check below doesn't mistake a half-finished change for an outside one.
+  let timerBusy = false;
+
+  // Every few seconds: does the server's running timer still match what this
+  // window shows? It won't if the timer was started or stopped from the menu
+  // bar — then the window catches up (and reloads the history after a stop).
+  async function syncTimerWithServer() {
+    if (timerBusy) return;
+    let active;
+    try {
+      const res = await fetch('/api/active');
+      active = await res.json();
+    } catch (err) {
+      return; // server unreachable — leave the window as it is
+    }
+    if (timerBusy) return; // Start/Stop was pressed while we were waiting
+
+    if (active) {
+      const start = new Date(active.startTime);
+      const sameTimer = currentSession && currentSession.startTime.getTime() === start.getTime();
+      if (!sameTimer) {
+        // Started elsewhere (e.g. "Start again" in the menu bar).
+        currentSession = { task: active.task, category: active.category, startTime: start };
+        showRunningTimer();
+      }
+    } else if (currentSession) {
+      // Stopped elsewhere: the server already saved the session.
+      showStoppedTimer();
+      await loadSessions();
+    }
+  }
 
   // When the page opens, ask the server whether a timer was left running
   // (e.g. the app was closed mid-session). If so, carry on counting from the
@@ -1271,15 +1320,19 @@
     // Tell the server a session is running, so it survives closing the app.
     // If this fails the timer still works — it just won't resume after closing.
     // (Kept in a variable so Stop can wait for it — see below.)
+    timerBusy = true;
     activeSaveRequest = fetch('/api/active', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(currentSession)
-    }).catch(err => console.error('Could not save the running timer:', err));
+    })
+      .catch(err => console.error('Could not save the running timer:', err))
+      .finally(() => { timerBusy = false; });
   });
 
   stopBtn.addEventListener('click', async () => {
     if (!currentSession) return;
+    timerBusy = true;
 
     clearInterval(timerInterval);
     timerInterval = null;
@@ -1341,14 +1394,8 @@
     }
 
     renderSessions();
-
-    currentSession = null;
-    statusEl.textContent = '';
-    taskInput.value = '';
-    taskInput.disabled = false;
-    categorySelect.disabled = false;
-    startBtn.disabled = false;
-    stopBtn.disabled = true;
+    showStoppedTimer();
+    timerBusy = false;
   });
 
   function renderSessions() {
@@ -1869,6 +1916,7 @@
 
   loadSessions();
   restoreRunningTimer();
+  setInterval(syncTimerWithServer, 5000); // pick up Start/Stop from the menu bar
   refreshNowApp();
   setInterval(refreshNowApp, 5000);
   refreshFocus();
