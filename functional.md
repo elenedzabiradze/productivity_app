@@ -43,7 +43,7 @@ Out of scope for Week 4:
 - Linking app time to categories or sessions
 - Deleting or trimming old activity data
 
-## Week 5: focus nudges (planned)
+## Week 5: focus nudges (done)
 Gentle Mac notifications ("nudges") while a session timer is running.
 
 - **Break nudge (Pomodoro style)**: after each block of work, "Time for a break —

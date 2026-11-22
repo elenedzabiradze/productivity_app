@@ -126,7 +126,7 @@ Server settings (environment variables, both optional):
 - GET /api/activity/current   latest reading: { t, app, idle } (or null)
 - GET /api/activity/today     time per app today: [{ app, ms }], largest first
 
-## Week 5: focus nudges (planned)
+## Week 5: focus nudges (done)
 
 ### Who does what
 - **Server (server.js) decides WHEN** a nudge is due. It already knows the running session
@@ -181,7 +181,7 @@ Server settings (environment variables, both optional):
   turned off or changed in System Settings → Notifications → Productivity Tracker.
 - No other permissions (idle time and app names already need none).
 
-### API (planned)
+### API
 - GET  /api/nudges/due     nudges to show now: [{ title, body }] (each returned once)
 - POST /api/nudges/test    queue a test notification (to check notifications work)
 - GET  /api/settings       nudge settings

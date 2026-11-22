@@ -1,4 +1,4 @@
-# Build Steps: Week 5 — Focus nudges
+# Build Steps: Week 5 — Focus nudges (done)
 
 ## Goal
 Mac notifications ("nudges") while a session timer is running: a Pomodoro-style break nudge
