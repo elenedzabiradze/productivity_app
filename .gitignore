@@ -18,3 +18,18 @@ activity.jsonl
 
 # Nudge settings — personal data.
 settings.json
+
+# Secrets — never commit these (API keys usually live in .env files).
+.env
+.env.*
+*.pem
+*.key
+*.p12
+
+# Claude Code's personal settings for this folder (also ignored globally on this Mac,
+# but listed here so it stays ignored on any computer).
+.claude/settings.local.json
+
+# Log files can contain paths or data.
+*.log
+npm-debug.log*
